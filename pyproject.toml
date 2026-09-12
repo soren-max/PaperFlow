@@ -1,0 +1,38 @@
+[build-system]
+requires = ["hatchling>=1.26"]
+build-backend = "hatchling.build"
+
+[project]
+name = "paperflow"
+version = "0.1.0"
+description = "A lightweight Zotero to Obsidian workflow for Codex"
+readme = "README.md"
+requires-python = ">=3.12"
+license = { file = "LICENSE" }
+authors = [{ name = "Soren Max" }]
+dependencies = [
+  "PyYAML>=6.0.2",
+  "rich>=13.9",
+  "typer>=0.15",
+  "zotero-agent>=0.8.5,<0.9",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.3", "ruff>=0.9"]
+
+[project.scripts]
+paperflow = "paperflow.cli:app"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/paperflow"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B"]
+ignore = ["E501"]
