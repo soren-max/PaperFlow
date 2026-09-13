@@ -6,15 +6,24 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Annotated
 
+import questionary
 import typer
+from questionary import Choice
 from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
 
-from .config import Config, load_config, load_manifest, save_manifest, write_config
+from .config import Config, config_path, load_config, load_manifest, save_manifest, write_config
 from .discovery import command_available, discover_vaults, zotero_profile_found
 from .sync import changes, synchronize
-from .zotero import ZoteroUnavailable, fetch_library, ping
+from .zotero import (
+    Collection,
+    ZoteroUnavailable,
+    fetch_library,
+    fetch_snapshot,
+    list_collections,
+    ping,
+)
 
 if os.name == "nt":
     # Windows redirection can inherit a legacy code page even though the console supports UTF-8.
@@ -69,6 +78,66 @@ def _relative_time(value: str | None) -> str:
     return f"{seconds // 86400} days ago"
 
 
+def _ordered_collections(collections: list[Collection]) -> list[tuple[Collection, int]]:
+    children: dict[str | None, list[Collection]] = {}
+    keys = {collection.key for collection in collections}
+    for collection in collections:
+        parent = collection.parent_key if collection.parent_key in keys else None
+        children.setdefault(parent, []).append(collection)
+    ordered: list[tuple[Collection, int]] = []
+
+    def visit(parent: str | None, depth: int) -> None:
+        for collection in sorted(children.get(parent, []), key=lambda item: item.name.casefold()):
+            ordered.append((collection, depth))
+            visit(collection.key, depth + 1)
+
+    visit(None, 0)
+    return ordered
+
+
+def _choose_scope(collections: list[Collection], current_keys: tuple[str, ...]) -> tuple[str, ...]:
+    if not collections:
+        return ()
+    mode = questionary.select(
+        "Zotero scope",
+        choices=["Entire Library", "Selected collections"],
+        default="Selected collections" if current_keys else "Entire Library",
+        instruction="(↑/↓ move, Enter select)",
+    ).ask()
+    if mode is None:
+        raise typer.Abort()
+    if mode == "Entire Library":
+        return ()
+    available = {collection.key for collection in collections}
+    choices = [
+        Choice(
+            title=f"{'  ' * depth}{collection.name}",
+            value=collection.key,
+            checked=collection.key in current_keys,
+        )
+        for collection, depth in _ordered_collections(collections)
+    ]
+    selected = questionary.checkbox(
+        "Select collections (nested collections are included)",
+        choices=choices,
+        instruction="(Space toggle, Enter finish)",
+    ).ask()
+    if selected is None:
+        raise typer.Abort()
+    return tuple(key for key in selected if key in available)
+
+
+def _scope_text(keys: tuple[str, ...], collections: list[Collection] | None = None) -> str:
+    if not keys:
+        return "Entire Library"
+    names = {collection.key: collection.name for collection in collections or []}
+    return ", ".join(names.get(key, key) for key in keys)
+
+
+def _paper_count(count: int) -> str:
+    return f"{count:,} {'paper' if count == 1 else 'papers'}"
+
+
 @app.callback()
 def main(ctx: typer.Context) -> None:
     """Show status when invoked without a command."""
@@ -97,21 +166,48 @@ def initialize(
             vault = Path(typer.prompt("Obsidian vault path"))
     vault = vault.expanduser().resolve()
     vault.mkdir(parents=True, exist_ok=True)
-    config = Config(vault=vault)
+    existing = load_config(vault) if config_path(vault).exists() else Config(vault=vault)
+    config = Config(
+        vault=vault,
+        literature_dir=existing.literature_dir,
+        collection_keys=existing.collection_keys,
+    )
     for folder in ("01-Literature", "02-Concepts", "03-Synthesis", "04-Questions"):
         (vault / folder).mkdir(exist_ok=True)
     agents = vault / "AGENTS.md"
     if not agents.exists():
         agents.write_text(VAULT_AGENTS, encoding="utf-8")
+    ok, _ = ping(timeout=5)
+    if ok:
+        try:
+            collections = list_collections()
+            config = Config(
+                vault=vault,
+                literature_dir=config.literature_dir,
+                collection_keys=_choose_scope(collections, config.collection_keys),
+            )
+            with console.status("Counting selected papers…"):
+                selected_count = len(fetch_library(config.collection_keys))
+        except ZoteroUnavailable as error:
+            collections = []
+            selected_count = None
+            console.print(f"[yellow]![/yellow] Could not read Zotero collections: {error}")
+    else:
+        collections = []
+        selected_count = None
+
     write_config(config)
     if not config.manifest_path.exists():
         save_manifest(config, {"version": 1, "last_sync_at": None, "items": {}})
 
     console.print(Panel.fit(f"[bold green]PaperFlow is ready[/bold green]\n{vault}"))
     console.print("\nCreated Literature, Concepts, Synthesis, and Questions folders.")
-    ok, _ = ping(timeout=5)
     if ok:
-        console.print("[green]✓[/green] Zotero is connected")
+        console.print(
+            f"[green]✓[/green] Zotero scope — {_scope_text(config.collection_keys, collections)}"
+        )
+        if selected_count is not None:
+            console.print(f"  {_paper_count(selected_count)} selected.")
     elif zotero_profile_found():
         console.print("[yellow]![/yellow] Zotero is installed but not connected.")
         console.print("  Open Zotero, then run [bold]zot init[/bold] once.")
@@ -128,7 +224,7 @@ def sync(
     config = _get_config(vault)
     console.print("[bold]Reading Zotero…[/bold]")
     try:
-        items = fetch_library()
+        items = fetch_library(config.collection_keys)
     except ZoteroUnavailable as error:
         console.print("\n[red]✗ Cannot reach Zotero.[/red]")
         console.print(str(error))
@@ -158,11 +254,14 @@ def status(
     pending: int | None = None
     annotations: int | None = None
     zotero_total: int | None = None
+    synced = len(records)
     try:
-        items = fetch_library(timeout=30)
+        items, collections = fetch_snapshot(config.collection_keys, timeout=30)
         zotero_total = len(items)
+        synced = sum(item["zotero_key"] in records for item in items)
         pending, annotations, missing = changes(items, manifest, config)
     except ZoteroUnavailable:
+        collections = []
         missing = sum(
             1
             for entry in records.values()
@@ -173,10 +272,11 @@ def status(
     table.add_column(style="bold cyan", width=14)
     table.add_column()
     table.add_row(
-        "Zotero", f"{zotero_total:,} papers" if zotero_total is not None else "Unavailable"
+        "Zotero", _paper_count(zotero_total) if zotero_total is not None else "Unavailable"
     )
+    table.add_row("Scope", _scope_text(config.collection_keys, collections))
     table.add_row("Vault", str(config.vault))
-    detail = f"{len(records):,} synced"
+    detail = f"{synced:,} synced"
     if pending is not None:
         detail += f" · {pending:,} pending"
     if missing:
@@ -219,6 +319,19 @@ def doctor(
         console.print("  Open Zotero. If this is your first run, use: [bold]zot init[/bold]")
         if detail:
             console.print(f"  [dim]{detail.splitlines()[-1]}[/dim]")
+
+    if ok and config.collection_keys:
+        try:
+            available = {collection.key for collection in list_collections()}
+            missing_keys = [key for key in config.collection_keys if key not in available]
+            if missing_keys:
+                problems += 1
+                console.print("[red]✗[/red] A selected Zotero collection no longer exists")
+                console.print("  Run [bold]paperflow init[/bold] to choose the scope again.")
+            else:
+                console.print("[green]✓[/green] Collection scope valid")
+        except ZoteroUnavailable:
+            pass
 
     for command, label in (("codex", "Codex"), ("git", "Git")):
         if command_available(command):

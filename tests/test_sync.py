@@ -100,3 +100,14 @@ def test_status_counts_annotation_only_changes(tmp_path):
     pending, new_annotations, missing = changes([changed], load_manifest(config), config)
 
     assert (pending, new_annotations, missing) == (1, 1, 0)
+
+
+def test_status_ignores_missing_notes_outside_current_scope(tmp_path):
+    config = Config(tmp_path)
+    synchronize(config, [paper(), paper(zotero_key="OUTSIDE", citekey="outside")])
+    outside = config.literature_path / "outside.md"
+    outside.unlink()
+
+    pending, new_annotations, missing = changes([paper()], load_manifest(config), config)
+
+    assert (pending, new_annotations, missing) == (0, 0, 0)

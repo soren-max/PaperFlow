@@ -15,6 +15,7 @@ MANIFEST_NAME = "manifest.json"
 class Config:
     vault: Path
     literature_dir: str = "01-Literature"
+    collection_keys: tuple[str, ...] = ()
 
     @property
     def state_dir(self) -> Path:
@@ -46,8 +47,12 @@ def write_config(config: Config) -> None:
     config.state_dir.mkdir(parents=True, exist_ok=True)
     vault_json = json.dumps(str(config.vault.resolve()), ensure_ascii=False)
     literature_json = json.dumps(config.literature_dir, ensure_ascii=False)
+    collection_keys = json.dumps(list(config.collection_keys), ensure_ascii=False)
     config_path(config.vault).write_text(
-        f"vault = {vault_json}\nliterature_dir = {literature_json}\n", encoding="utf-8"
+        f"vault = {vault_json}\n"
+        f"literature_dir = {literature_json}\n"
+        f"collection_keys = {collection_keys}\n",
+        encoding="utf-8",
     )
     pointer = active_vault_path()
     pointer.parent.mkdir(parents=True, exist_ok=True)
@@ -77,7 +82,11 @@ def load_config(explicit: Path | None = None) -> Config:
     with path.open("rb") as handle:
         data = tomllib.load(handle)
     vault = Path(data["vault"]).expanduser()
-    return Config(vault=vault, literature_dir=data.get("literature_dir", "01-Literature"))
+    return Config(
+        vault=vault,
+        literature_dir=data.get("literature_dir", "01-Literature"),
+        collection_keys=tuple(data.get("collection_keys", ())),
+    )
 
 
 def load_manifest(config: Config) -> dict:

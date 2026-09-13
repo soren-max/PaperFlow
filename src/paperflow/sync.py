@@ -36,8 +36,11 @@ def changes(items: list[dict], manifest: dict, config: Config) -> tuple[int, int
         old_count = old.get("annotation_count", 0) if old else 0
         if not old or old.get("annotations_hash") != current_hash:
             new_annotations += max(len(item.get("annotations") or []) - old_count, 0)
+    scope_keys = {item["zotero_key"] for item in items}
     missing_notes = sum(
-        1 for entry in known.values() if not (config.vault / entry.get("note_path", "")).exists()
+        1
+        for key, entry in known.items()
+        if key in scope_keys and not (config.vault / entry.get("note_path", "")).exists()
     )
     return changed, new_annotations, missing_notes
 

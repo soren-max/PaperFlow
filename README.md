@@ -25,11 +25,13 @@ zot init
 
 If the bridge plugin is not installed yet, `zot init` prints its official download link and the short Zotero installation steps. Run `zot init` again after installing the XPI.
 
+PaperFlow talks only to the local bridge and does not require a Zotero cloud account. If `zot init` cannot detect a `userID` but `paperflow doctor` says `Zotero reachable`, PaperFlow is ready to use.
+
 Better BibTeX is optional but recommended. When available, PaperFlow uses its stable citation keys. Without it, PaperFlow creates a readable key once and preserves it in the manifest.
 
 ## First run
 
-If Obsidian already knows about one Vault, PaperFlow discovers it:
+If Obsidian already knows about one Vault, PaperFlow discovers it. When Zotero is connected, initialization also offers an optional collection picker:
 
 ```powershell
 paperflow init
@@ -56,6 +58,16 @@ AGENTS.md
 
 Existing folders and `AGENTS.md` are left untouched. PaperFlow remembers the active Vault so daily commands work from any directory.
 
+### Zotero scope
+
+The default is **Entire Library**. You can instead select one or more Zotero collections during `paperflow init`. Run `paperflow init` again whenever you want to change the selection.
+
+- PaperFlow stores stable Zotero collection keys, so renaming a collection does not break the configuration.
+- Selecting a collection includes all of its nested collections, matching the intuitive recursive behavior of `zotero-agent export --recursive`.
+- Selecting overlapping parent and child collections never duplicates a paper.
+- An empty collection is a valid scope and produces zero selected papers.
+- Existing V1 configuration files automatically mean Entire Library; no migration command is needed.
+
 ## Daily use
 
 ```powershell
@@ -66,8 +78,8 @@ paperflow doctor
 
 Running `paperflow` with no command is the same as `paperflow status`.
 
-- `sync` reads all regular items and PDF annotations from the personal Zotero library.
-- `status` shows Zotero, Vault, synced/pending notes, new annotations, and the last sync.
+- `sync` reads regular items and PDF annotations from the selected Zotero scope.
+- `status` shows the active scope, Zotero papers, synced/pending notes, new annotations, and the last sync.
 - `doctor` checks configuration, Vault, Zotero bridge, Codex, and Git, with a direct fix when something is wrong.
 
 ## Note ownership
@@ -86,7 +98,7 @@ Literature notes use the citation key as the filename, for example `01-Literatur
 
 Everything under `## My Notes` belongs to you and is preserved across repeated syncs. Do not remove the managed markers; they make updates simple and transparent instead of relying on a merge engine.
 
-The manifest maps each Zotero item key to its stable citekey and note path. PaperFlow never writes to Zotero and does not use a database.
+The manifest maps each Zotero item key to its stable citekey and note path. Changing scope does not delete notes that were synced earlier. PaperFlow never writes to Zotero and does not use a database.
 
 ## Development
 

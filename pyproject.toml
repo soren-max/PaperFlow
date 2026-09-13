@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "paperflow"
-version = "0.1.0"
+version = "0.1.1"
 description = "A lightweight Zotero to Obsidian workflow for Codex"
 readme = "README.md"
 requires-python = ">=3.12"
@@ -12,6 +12,7 @@ license = { file = "LICENSE" }
 authors = [{ name = "Soren Max" }]
 dependencies = [
   "PyYAML>=6.0.2",
+  "questionary>=2.1",
   "rich>=13.9",
   "typer>=0.15",
   "zotero-agent>=0.8.5,<0.9",
