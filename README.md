@@ -50,13 +50,19 @@ Initialization creates only:
 02-Concepts/
 03-Synthesis/
 04-Questions/
+90-Templates/
+  Concept.md
+  Synthesis.md
+  Question.md
+.agents/
+  skills/paperflow/SKILL.md
 AGENTS.md
 .paperflow/
   config.toml
   manifest.json
 ```
 
-Existing folders and `AGENTS.md` are left untouched. PaperFlow remembers the active Vault so daily commands work from any directory.
+Existing folders, customized instructions, skills, and templates are left untouched. Re-running `init` upgrades the original PaperFlow-generated instructions and adds missing V1.2 resources. PaperFlow remembers the active Vault so daily commands work from any directory.
 
 ### Zotero scope
 
@@ -81,6 +87,22 @@ Running `paperflow` with no command is the same as `paperflow status`.
 - `sync` reads regular items and PDF annotations from the selected Zotero scope.
 - `status` shows the active scope, Zotero papers, synced/pending notes, new annotations, and the last sync.
 - `doctor` checks configuration, Vault, Zotero bridge, Codex, and Git, with a direct fix when something is wrong.
+
+## Using PaperFlow with Codex
+
+Sync, open Codex in the Vault, and ask naturally:
+
+```powershell
+paperflow sync
+codex
+```
+
+- Review my recently synced papers.
+- Synthesize the literature on agent memory.
+- Update the concept note for retrieval-augmented generation.
+- What should I read next based on my open questions?
+
+The included PaperFlow skill teaches Codex to keep Literature as source-grounded evidence and put cross-paper reasoning in Concepts or Synthesis while retaining citekeys. PaperFlow provides no AI runtime of its own; Codex works directly on the human-readable Markdown Vault.
 
 ## Note ownership
 

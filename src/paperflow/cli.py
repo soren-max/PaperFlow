@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 import sys
 from datetime import UTC, datetime
+from importlib.resources import files
 from pathlib import Path
 from typing import Annotated
 
@@ -40,7 +41,14 @@ app = typer.Typer(
 )
 console = Console()
 
-VAULT_AGENTS = """# PaperFlow Vault
+VAULT_RESOURCES = {
+    "AGENTS.md": "AGENTS.md",
+    ".agents/skills/paperflow/SKILL.md": "skills/paperflow/SKILL.md",
+    "90-Templates/Concept.md": "templates/Concept.md",
+    "90-Templates/Synthesis.md": "templates/Synthesis.md",
+    "90-Templates/Question.md": "templates/Question.md",
+}
+LEGACY_VAULT_AGENTS = """# PaperFlow Vault
 
 This is a personal research knowledge base.
 
@@ -51,6 +59,20 @@ This is a personal research knowledge base.
 
 Treat Literature as evidence. Use Codex to turn that evidence into Concepts and Synthesis. Mark uncertainty explicitly and prefer Obsidian links between durable notes.
 """
+
+
+def _install_vault_resources(vault: Path) -> None:
+    resources = files("paperflow").joinpath("resources")
+    for destination, source in VAULT_RESOURCES.items():
+        path = vault / destination
+        if path.exists():
+            is_legacy_agents = destination == "AGENTS.md" and path.read_text(
+                encoding="utf-8"
+            ) == LEGACY_VAULT_AGENTS
+            if not is_legacy_agents:
+                continue
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(resources.joinpath(source).read_text(encoding="utf-8"), encoding="utf-8")
 
 
 def _get_config(path: Path | None = None) -> Config:
@@ -174,9 +196,7 @@ def initialize(
     )
     for folder in ("01-Literature", "02-Concepts", "03-Synthesis", "04-Questions"):
         (vault / folder).mkdir(exist_ok=True)
-    agents = vault / "AGENTS.md"
-    if not agents.exists():
-        agents.write_text(VAULT_AGENTS, encoding="utf-8")
+    _install_vault_resources(vault)
     ok, _ = ping(timeout=5)
     if ok:
         try:
@@ -201,7 +221,9 @@ def initialize(
         save_manifest(config, {"version": 1, "last_sync_at": None, "items": {}})
 
     console.print(Panel.fit(f"[bold green]PaperFlow is ready[/bold green]\n{vault}"))
-    console.print("\nCreated Literature, Concepts, Synthesis, and Questions folders.")
+    console.print(
+        "\nPrepared Literature, Concepts, Synthesis, Questions, templates, and the Codex skill."
+    )
     if ok:
         console.print(
             f"[green]✓[/green] Zotero scope — {_scope_text(config.collection_keys, collections)}"
