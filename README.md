@@ -9,7 +9,35 @@ Zotero  →  PaperFlow  →  Obsidian  →  Codex
 
 It is a small, Windows-first personal tool. Zotero remains the source of truth for papers, metadata, PDFs, and annotations. PaperFlow owns only the clean Markdown sync. Codex can then connect literature into concepts, synthesis, questions, and writing.
 
-## Install
+## Quick Start on Windows
+
+Clone PaperFlow, open PowerShell in the repository, and run one setup command:
+
+```powershell
+git clone https://github.com/soren-max/PaperFlow.git
+cd PaperFlow
+powershell -ExecutionPolicy Bypass -File .\setup-windows.ps1
+```
+
+Pass the Vault directly when you already know it:
+
+```powershell
+.\setup-windows.ps1 -Vault "E:\Obsidian\Research"
+```
+
+The setup script finds Python 3.12+, creates or reuses `.venv`, installs PaperFlow, starts Zotero when needed, initializes `zotero-agent`, finds your Obsidian Vault, runs `paperflow init` and `doctor`, and checks Codex CLI. If Codex is missing, it offers the current official OpenAI Windows installer.
+
+The script adds only this repository's `.venv\Scripts` directory to your **user** PATH—never the system PATH. After the first setup, open a new PowerShell window once so it sees the updated PATH. The daily workflow is then:
+
+```powershell
+paperflow sync
+cd "E:\Obsidian\Research"
+codex
+```
+
+Use `-SkipCodex` or `-SkipZotero` when you intentionally want to configure that part later. Re-running setup is safe: the virtual environment and existing PaperFlow configuration are reused, while your customized Vault instructions and templates remain untouched.
+
+## Advanced / Manual Setup
 
 Python 3.12 or newer is required.
 
