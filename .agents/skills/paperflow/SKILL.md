@@ -14,6 +14,14 @@ Treat the vault as a small evidence-to-reasoning system:
 
 Read `AGENTS.md` before working. Search existing notes and aliases before creating a file. Prefer updating the closest existing Concept, Synthesis, or Question. Use the light templates in `90-Templates/` when creating a note, adapting them rather than filling empty sections mechanically.
 
+## Researcher-facing workflow
+
+Keep the researcher's interface simple: day to day, they run `paperflow sync` and ask in natural language. `triage` is optional for screening a batch, and `quick`, `normal`, and `deep` are internal routing decisions rather than choices the researcher must make. Do not ask them to run map, extraction, card, or other intermediate pipeline commands.
+
+When asked to “organize this paper” or an equivalent request, resolve the paper from its citekey, title, or Literature note. Inspect saved PaperFlow artifacts first, ingest and convert the Zotero PDF only if the needed source is absent or stale, read bounded sections instead of the whole source, validate evidence, then update the Literature note and relevant Concepts, Synthesis, Questions, or Research Areas. Report the research result and any remaining evidence gap, not the internal stages.
+
+Favor work that advances the actual research program: read papers, connect knowledge, compare methods, identify gaps, form hypotheses, design experiments, write reviews, and simulate peer review.
+
 ## Evidence boundary
 
 Zotero remains the bibliographic source of truth. Do not invent or repair metadata, quotes, findings, methods, citations, or page references from memory. Do not infer beyond the text available in Literature notes and user-provided sources.

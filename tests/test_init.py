@@ -28,9 +28,11 @@ def test_init_installs_codex_skill_agents_and_readable_templates(tmp_path, monke
     assert "02-Concepts/" in skill
     assert "03-Synthesis/" in skill
     assert "04-Questions/" in skill
-    assert "## Triage a paper (V3)" in skill
+    assert "## Researcher-facing workflow" in skill
+    assert "## Optional batch triage (V3)" in skill
     assert "to triage synced Zotero papers" in skill
-    assert "## Process a completed paper (V2)" in skill
+    assert "## Internal paper-processing workflow (V2)" in skill
+    assert "Do not ask them to run map, extraction, card" in skill
     assert (vault / ".agents/skills/paperflow/prompts/triage.md").is_file()
     assert "processing_level: deep" in (
         vault / ".agents/skills/paperflow/prompts/triage.md"
@@ -108,7 +110,7 @@ def test_init_upgrades_only_the_original_pre_triage_skill(tmp_path, monkeypatch,
     result = CliRunner().invoke(app, ["init", str(vault)])
     assert result.exit_code == 0, result.output
     upgraded = skill.read_text(encoding="utf-8")
-    assert "## Triage a paper (V3)" in upgraded
+    assert "## Optional batch triage (V3)" in upgraded
     assert "prompts/triage.md" in upgraded
     assert "Run `paperflow triage <citekey>` again" in upgraded
 

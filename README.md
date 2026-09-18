@@ -108,17 +108,13 @@ The default is **Entire Library**. You can instead select one or more Zotero col
 
 ```powershell
 paperflow sync
-paperflow triage
-paperflow status
-paperflow doctor
+cd "E:\Obsidian\Research"
+codex
 ```
 
-Running `paperflow` with no command is the same as `paperflow status`.
+Then ask naturally: “整理这篇”, “比较这两篇方法”, “找出这个方向的 gap”, or “基于已有文献设计实验”。Codex handles source location, bounded reading, evidence validation, and knowledge-base updates as internal work.
 
-- `sync` reads regular items and PDF annotations from the selected Zotero scope.
-- `triage` prepares bounded packets for synced papers and reports which ones deserve deep processing.
-- `status` shows the active scope, Zotero papers, synced/pending notes, new annotations, triage and processing counts, and the last sync.
-- `doctor` checks configuration, Vault, Zotero bridge, Codex, and Git, with a direct fix when something is wrong.
+`triage` remains available when you want to screen a batch of synced literature. `status` and `doctor` are diagnostic tools. Internal processing levels and stages are not daily commands or user choices.
 
 ## Using PaperFlow with Codex
 
