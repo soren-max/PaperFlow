@@ -4,10 +4,10 @@ PaperFlow turns a Zotero library into clean, durable Markdown notes for Obsidian
 
 ```text
 Zotero  →  PaperFlow  →  Obsidian  →  Codex
- facts       sync        knowledge     reasoning
+ facts   sync · triage   evidence     reasoning
 ```
 
-It is a small, Windows-first personal tool. Zotero remains the source of truth for papers, metadata, PDFs, and annotations. PaperFlow owns only the clean Markdown sync. Codex can then connect literature into concepts, synthesis, questions, and writing.
+It is a small, Windows-first personal tool. Zotero remains the source of truth for papers, metadata, PDFs, and annotations. PaperFlow owns only the clean Markdown sync and the triage that decides which papers deserve deep reading. Codex can then connect literature into concepts, synthesis, questions, and writing.
 
 ## Quick Start on Windows
 
@@ -74,11 +74,13 @@ paperflow init "E:\Notes\Research"
 Initialization creates only:
 
 ```text
+00-Research-Areas/
 01-Literature/
 02-Concepts/
 03-Synthesis/
 04-Questions/
 90-Templates/
+  ResearchArea.md
   Concept.md
   Synthesis.md
   Question.md
@@ -106,6 +108,7 @@ The default is **Entire Library**. You can instead select one or more Zotero col
 
 ```powershell
 paperflow sync
+paperflow triage
 paperflow status
 paperflow doctor
 ```
@@ -113,7 +116,8 @@ paperflow doctor
 Running `paperflow` with no command is the same as `paperflow status`.
 
 - `sync` reads regular items and PDF annotations from the selected Zotero scope.
-- `status` shows the active scope, Zotero papers, synced/pending notes, new annotations, and the last sync.
+- `triage` prepares bounded packets for synced papers and reports which ones deserve deep processing.
+- `status` shows the active scope, Zotero papers, synced/pending notes, new annotations, triage progress, and the last sync.
 - `doctor` checks configuration, Vault, Zotero bridge, Codex, and Git, with a direct fix when something is wrong.
 
 ## Using PaperFlow with Codex
@@ -125,6 +129,7 @@ paperflow sync
 codex
 ```
 
+- Triage the synced papers and tell me which ones are worth reading deeply.
 - Review my recently synced papers.
 - Synthesize the literature on agent memory.
 - Update the concept note for retrieval-augmented generation.
@@ -150,6 +155,33 @@ Everything under `## My Notes` belongs to you and is preserved across repeated s
 
 The manifest maps each Zotero item key to its stable citekey and note path. Changing scope does not delete notes that were synced earlier. PaperFlow never writes to Zotero and does not use a database.
 
+## Triage the backlog
+
+Deep reading is expensive, so not every synced paper should get it. `triage` is the cheap first pass that decides:
+
+```powershell
+paperflow triage             # the backlog, up to --limit papers
+paperflow triage jiangndkg   # one paper
+```
+
+The command builds `.paperflow/triage/<zotero-key>/packet.md` from the Literature note — metadata, abstract, Zotero annotations, section titles when the paper is already ingested, and a digest of `00-Research-Areas/`, `04-Questions/`, and the existing Literature. It reads no PDF, needs no Zotero connection, and no converter. Then, in Codex, the skill reads `prompts/triage.md` and writes `paper-card.md` beside the packet:
+
+```markdown
+---
+paperflow_card: 1
+citekey: jiangndkg
+zotero_key: J68KBEZ6
+research_area: KG-augmented RAG
+priority: high
+deep_processing: "yes"
+basis: abstract, tags
+---
+```
+
+Rerun `paperflow triage` to validate the card and print priorities. A card is a routing decision, not a summary: five sections, each under 80 words, and the CLI rejects a card that is too long, that cites an input the packet did not contain, or that does not match the paper. Repeated runs order still-pending papers first, so you walk through a large backlog in batches.
+
+Keep `00-Research-Areas/` current — it is what triage judges relevance against. Only papers a card marks `deep_processing: yes` should continue to the staged workflow below. The [V3 triage report](docs/v3-triage.md) records the packet contract and the context budget.
+
 ## V2 staged reading spike
 
 The V1 daily commands remain the same. For a high-value paper with a local Zotero PDF, install the optional PDF converter and ingest a synced citekey:
@@ -164,6 +196,10 @@ paperflow process jiangndkg
 
 PyMuPDF4LLM is the current default converter. Use `python -m pip install -e ".[pdf-docling]"` and `paperflow ingest <citekey> --converter docling` for the Docling alternative on a fresh paper. The [converter ADR](docs/adr/pdf-to-markdown.md) gives the KG-Agent benchmark, accuracy limits, and license details. The [V2 spike report](docs/v2-spike.md) records the data flow and acceptance result.
 
+## Migrating an existing research note
+
+Run `paperflow migrate <citekey>` before processing one existing note. It records a fixed baseline for `## My Notes` and linked Concept, Question and Synthesis files, then reports drift and V2 progress on later runs. Build the staged evidence and compare the old claims in `.paperflow/migrations/<zotero-key>/migration-review.md` before publishing a V2 reading block. The [legacy migration strategy](docs/legacy-migration.md) describes the state schema, reconcile rules and BRINK/KG-Agent validation.
+
 ## Development
 
 ```powershell
@@ -172,4 +208,4 @@ pytest
 ruff check .
 ```
 
-The tests focus on repeatable sync, metadata and annotation updates, preserved personal notes, valid manifests, and readable Markdown.
+The tests focus on repeatable sync, metadata and annotation updates, preserved personal notes, valid manifests, readable Markdown, and reproducible triage packets and cards.

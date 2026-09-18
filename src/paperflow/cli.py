@@ -18,9 +18,12 @@ from rich.table import Table
 from .config import Config, config_path, load_config, load_manifest, save_manifest, write_config
 from .discovery import command_available, discover_vaults, zotero_profile_found
 from .ingest import ingest as ingest_paper
+from .migration import reconcile as reconcile_legacy
 from .process import inspect as inspect_paper
 from .process import publish_note as publish_paper_note
 from .sync import changes, synchronize
+from .triage import summary as triage_summary
+from .triage import triage as triage_papers
 from .zotero import (
     Collection,
     ZoteroUnavailable,
@@ -48,15 +51,33 @@ console = Console()
 VAULT_RESOURCES = {
     "AGENTS.md": "AGENTS.md",
     ".agents/skills/paperflow/SKILL.md": "skills/paperflow/SKILL.md",
+    ".agents/skills/paperflow/prompts/triage.md": "skills/paperflow/prompts/triage.md",
     ".agents/skills/paperflow/prompts/paper-map.md": "skills/paperflow/prompts/paper-map.md",
     ".agents/skills/paperflow/prompts/section-evidence.md": "skills/paperflow/prompts/section-evidence.md",
     ".agents/skills/paperflow/prompts/cards.md": "skills/paperflow/prompts/cards.md",
     ".agents/skills/paperflow/prompts/paper-synthesis.md": "skills/paperflow/prompts/paper-synthesis.md",
     ".agents/skills/paperflow/prompts/knowledge-integration.md": "skills/paperflow/prompts/knowledge-integration.md",
+    ".agents/skills/paperflow/prompts/legacy-migration.md": "skills/paperflow/prompts/legacy-migration.md",
+    "90-Templates/ResearchArea.md": "templates/ResearchArea.md",
     "90-Templates/Concept.md": "templates/Concept.md",
     "90-Templates/Synthesis.md": "templates/Synthesis.md",
     "90-Templates/Question.md": "templates/Question.md",
 }
+VAULT_FOLDERS = (
+    "00-Research-Areas",
+    "01-Literature",
+    "02-Concepts",
+    "03-Synthesis",
+    "04-Questions",
+)
+TRIAGE_LABELS = {
+    "ready": "packet ready",
+    "card": "card valid",
+    "invalid": "invalid",
+    "stale": "note changed",
+    "missing-note": "note missing",
+}
+TRIAGE_TABLE_LIMIT = 25
 LEGACY_VAULT_AGENTS = """# PaperFlow Vault
 
 This is a personal research knowledge base.
@@ -68,6 +89,16 @@ This is a personal research knowledge base.
 
 Treat Literature as evidence. Use Codex to turn that evidence into Concepts and Synthesis. Mark uncertainty explicitly and prefer Obsidian links between durable notes.
 """
+PRE_TRIAGE_VAULT_AGENTS = """# PaperFlow research rules
+
+- Zotero is the bibliographic source of truth.
+- `01-Literature/` is source-grounded. Never invent metadata, quotes, findings, or citations, and never silently turn an inference into a paper's claim.
+- Put cross-paper reasoning in `02-Concepts/` or `03-Synthesis/`, retaining the source literature citekeys.
+- Prefer updating an existing Concept or Synthesis over creating a duplicate.
+- Do not modify PaperFlow-managed blocks or `## My Notes` unless explicitly requested.
+- Keep Markdown human-readable and mark inference, uncertainty, and missing evidence clearly.
+"""
+REPLACEABLE_VAULT_AGENTS = (LEGACY_VAULT_AGENTS, PRE_TRIAGE_VAULT_AGENTS)
 
 
 def _install_vault_resources(vault: Path) -> None:
@@ -77,7 +108,7 @@ def _install_vault_resources(vault: Path) -> None:
         if path.exists():
             is_legacy_agents = (
                 destination == "AGENTS.md"
-                and path.read_text(encoding="utf-8") == LEGACY_VAULT_AGENTS
+                and path.read_text(encoding="utf-8") in REPLACEABLE_VAULT_AGENTS
             )
             if not is_legacy_agents:
                 continue
@@ -204,7 +235,7 @@ def initialize(
         literature_dir=existing.literature_dir,
         collection_keys=existing.collection_keys,
     )
-    for folder in ("01-Literature", "02-Concepts", "03-Synthesis", "04-Questions"):
+    for folder in VAULT_FOLDERS:
         (vault / folder).mkdir(exist_ok=True)
     _install_vault_resources(vault)
     ok, _ = ping(timeout=5)
@@ -232,7 +263,8 @@ def initialize(
 
     console.print(Panel.fit(f"[bold green]PaperFlow is ready[/bold green]\n{vault}"))
     console.print(
-        "\nPrepared Literature, Concepts, Synthesis, Questions, templates, and the Codex skill."
+        "\nPrepared Research Areas, Literature, Concepts, Synthesis, Questions, templates, "
+        "and the Codex skill."
     )
     if ok:
         console.print(
@@ -292,6 +324,63 @@ def ingest(
         raise typer.Exit(1) from error
     word = "Ingested" if created else "Already ingested"
     console.print(f"[green]✓[/green] {word}: {directory}")
+
+
+@app.command()
+def triage(
+    paper: Annotated[str | None, typer.Argument(help="One synced Zotero key or citekey")] = None,
+    vault: Annotated[Path | None, typer.Option("--vault", help="Vault or config path")] = None,
+    limit: Annotated[int, typer.Option("--limit", help="Most papers to triage in one run")] = 25,
+    refresh: Annotated[
+        bool, typer.Option("--refresh", help="Rebuild packets even when they already exist")
+    ] = False,
+) -> None:
+    """Decide which synced papers deserve deep processing."""
+    config = _get_config(vault)
+    try:
+        result = triage_papers(config, paper, limit, refresh)
+    except (OSError, ValueError, KeyError) as error:
+        console.print(f"[red]✗[/red] {error}")
+        raise typer.Exit(1) from error
+    if not result.rows:
+        console.print("Nothing to triage. Run [bold]paperflow sync[/bold] first.")
+        return
+    rows = result.rows
+    if len(rows) > TRIAGE_TABLE_LIMIT:
+        rows = [row for row in rows if row.status != "card" or row.deep_processing == "yes"]
+        if hidden := len(result.rows) - len(rows):
+            console.print(f"[dim]… {hidden} validated cards hidden. Narrow with --limit.[/dim]")
+    table = Table(show_header=True, header_style="bold")
+    for column in ("Paper", "Research area", "Priority", "Deep", "Status"):
+        table.add_column(column)
+    for row in rows:
+        table.add_row(
+            row.citekey,
+            row.research_area or "—",
+            row.priority or "—",
+            row.deep_processing or "—",
+            TRIAGE_LABELS.get(row.status, row.status),
+        )
+    console.print(table)
+    for row in result.rows:
+        for issue in row.issues:
+            console.print(f"[yellow]![/yellow] {issue}")
+    for missing in result.missing_notes:
+        console.print(f"[yellow]![/yellow] Literature note is missing: {missing}")
+    console.print(
+        f"\n{result.ready} packets prepared · {result.valid} cards valid · "
+        f"{result.high} high priority · {result.recommended} recommend deep processing"
+    )
+    invalid = any(row.issues for row in result.rows)
+    pending = any(row.status in ("ready", "stale") for row in result.rows)
+    if invalid:
+        console.print("Next: correct the issues above and rerun paperflow triage.")
+    elif pending:
+        console.print("Next: in Codex, triage the prepared packets with prompts/triage.md.")
+    if result.remaining:
+        console.print(f"{result.remaining} more papers are queued; rerun to continue.")
+    if invalid:
+        raise typer.Exit(1)
 
 
 @app.command()
@@ -360,6 +449,27 @@ def process(
 
 
 @app.command()
+def migrate(
+    paper: Annotated[str, typer.Argument(help="One synced Zotero key or citekey")],
+    vault: Annotated[Path | None, typer.Option("--vault", help="Vault or config path")] = None,
+) -> None:
+    """Capture legacy notes once and reconcile one paper without rewriting them."""
+    config = _get_config(vault)
+    try:
+        directory, result = reconcile_legacy(config, paper)
+    except (OSError, ValueError, KeyError, json.JSONDecodeError) as error:
+        console.print(f"[red]✗[/red] {error}")
+        raise typer.Exit(1) from error
+    console.print(f"Migration: {result['status']} · {directory}")
+    for issue in result["issues"]:
+        console.print(f"[yellow]![/yellow] {issue}")
+    if result["duplicate_candidates"]:
+        console.print("Duplicate Zotero candidates need manual review.")
+    if result["issues"]:
+        raise typer.Exit(1)
+
+
+@app.command()
 def status(
     vault: Annotated[Path | None, typer.Option("--vault", help="Vault or config path")] = None,
 ) -> None:
@@ -399,10 +509,19 @@ def status(
         detail += f" · {missing:,} missing"
     table.add_row("Literature", detail)
     table.add_row("Annotations", f"{annotations:,} new" if annotations is not None else "—")
+    counts = triage_summary(config)
+    triage_detail = f"{counts['carded']:,} triaged"
+    if counts["high"] or counts["recommended"]:
+        triage_detail += f" · {counts['high']:,} high · {counts['recommended']:,} deep"
+    if counts["pending"]:
+        triage_detail += f" · {counts['pending']:,} pending"
+    table.add_row("Triage", triage_detail)
     table.add_row("Last sync", _relative_time(manifest.get("last_sync_at")))
     console.print(Panel(table, title="[bold]PaperFlow[/bold]", expand=False))
     if pending:
         console.print("\nRun: [bold]paperflow sync[/bold]")
+    elif counts["pending"]:
+        console.print("\nRun: [bold]paperflow triage[/bold]")
 
 
 @app.command()

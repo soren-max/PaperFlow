@@ -1,6 +1,7 @@
 # PaperFlow research rules
 
 - Zotero is the bibliographic source of truth.
+- `00-Research-Areas/` names what this researcher is actually working on. Keep it current: `paperflow triage` reads it, together with `04-Questions/`, to judge whether a paper is worth deep processing.
 - `01-Literature/` is source-grounded. Never invent metadata, quotes, findings, or citations, and never silently turn an inference into a paper's claim.
 - Put cross-paper reasoning in `02-Concepts/` or `03-Synthesis/`, retaining the source literature citekeys.
 - Prefer updating an existing Concept or Synthesis over creating a duplicate.

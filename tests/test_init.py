@@ -1,6 +1,6 @@
 from typer.testing import CliRunner
 
-from paperflow.cli import LEGACY_VAULT_AGENTS, app
+from paperflow.cli import LEGACY_VAULT_AGENTS, PRE_TRIAGE_VAULT_AGENTS, app
 
 
 def test_init_installs_codex_skill_agents_and_readable_templates(tmp_path, monkeypatch):
@@ -17,14 +17,21 @@ def test_init_installs_codex_skill_agents_and_readable_templates(tmp_path, monke
     concept = (vault / "90-Templates/Concept.md").read_text(encoding="utf-8")
     synthesis = (vault / "90-Templates/Synthesis.md").read_text(encoding="utf-8")
     question = (vault / "90-Templates/Question.md").read_text(encoding="utf-8")
+    assert (vault / "00-Research-Areas").is_dir()
     assert "Zotero is the bibliographic source of truth" in agents
+    assert "00-Research-Areas/" in agents
+    assert "00-Research-Areas/" in skill
     assert "01-Literature/" in skill
     assert "02-Concepts/" in skill
     assert "03-Synthesis/" in skill
     assert "04-Questions/" in skill
+    assert "## Triage a paper (V3)" in skill
     assert "## Process a completed paper (V2)" in skill
+    assert (vault / ".agents/skills/paperflow/prompts/triage.md").is_file()
     assert (vault / ".agents/skills/paperflow/prompts/paper-map.md").is_file()
     assert (vault / ".agents/skills/paperflow/prompts/section-evidence.md").is_file()
+    assert (vault / ".agents/skills/paperflow/prompts/legacy-migration.md").is_file()
+    assert (vault / "90-Templates/ResearchArea.md").is_file()
     assert "## Evidence" in concept
     assert "## Sources" in synthesis
     assert "## Working Hypotheses" in question
@@ -61,3 +68,20 @@ def test_init_upgrades_original_legacy_agents(tmp_path, monkeypatch):
     upgraded = (vault / "AGENTS.md").read_text(encoding="utf-8")
     assert upgraded != LEGACY_VAULT_AGENTS
     assert "Never invent metadata, quotes, findings, or citations" in upgraded
+    assert "00-Research-Areas/" in upgraded
+
+
+def test_init_upgrades_a_pre_triage_agents_file(tmp_path, monkeypatch):
+    monkeypatch.setenv("APPDATA", str(tmp_path / "appdata"))
+    monkeypatch.setattr("paperflow.cli.ping", lambda timeout=5: (False, "offline"))
+    monkeypatch.setattr("paperflow.cli.zotero_profile_found", lambda: False)
+    vault = tmp_path / "Pre Triage Vault"
+    vault.mkdir()
+    (vault / "AGENTS.md").write_text(PRE_TRIAGE_VAULT_AGENTS, encoding="utf-8")
+
+    result = CliRunner().invoke(app, ["init", str(vault)])
+
+    assert result.exit_code == 0, result.output
+    upgraded = (vault / "AGENTS.md").read_text(encoding="utf-8")
+    assert upgraded != PRE_TRIAGE_VAULT_AGENTS
+    assert "00-Research-Areas/" in upgraded
