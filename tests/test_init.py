@@ -22,6 +22,9 @@ def test_init_installs_codex_skill_agents_and_readable_templates(tmp_path, monke
     assert "02-Concepts/" in skill
     assert "03-Synthesis/" in skill
     assert "04-Questions/" in skill
+    assert "## Process a completed paper (V2)" in skill
+    assert (vault / ".agents/skills/paperflow/prompts/paper-map.md").is_file()
+    assert (vault / ".agents/skills/paperflow/prompts/section-evidence.md").is_file()
     assert "## Evidence" in concept
     assert "## Sources" in synthesis
     assert "## Working Hypotheses" in question

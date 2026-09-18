@@ -59,3 +59,17 @@ Use the current Literature, Concepts, Questions, and gaps or limitations recorde
 ## Maintain questions
 
 Put durable unresolved questions or hypotheses in `04-Questions/`. Update a matching question when one exists. Keep evidence separate from working hypotheses, link the exact supporting or conflicting citekeys, and record what observation or reading would resolve the question. Do not present a hypothesis as a paper finding.
+
+## Process a completed paper (V2)
+
+Use this workflow when asked to read a paper deeply. `paperflow sync` still owns Zotero metadata and annotations; `paperflow ingest <citekey>` reads the PDF attached to the Zotero item and creates page-located Markdown in `.paperflow/papers/<zotero-key>/`. Install `paperflow[pdf]` once if PyMuPDF4LLM is absent. The PDF remains in Zotero.
+
+Run `paperflow process <citekey>` to inspect durable progress. Work in this order, reading each prompt in `prompts/` immediately before its stage:
+
+1. `paper-map.md`: use `state.json`, `structure.json`, abstract, headings, captions, conclusion, and limitations to write `paper-map.md` plus `paper-map.json` with exact `reading_sections` IDs.
+2. `section-evidence.md`: call `paperflow process <citekey> --section <id>` and read only that section's listed chunks, one at a time. Write `evidence/<id>.jsonl`; run `paperflow process` to validate each section. All evidence quotes must occur on the cited page.
+3. `cards.md`: use validated `evidence.jsonl` to create `method-card.md` and `result-card.md`, citing evidence IDs.
+4. `paper-synthesis.md`: create `paper-note.md` from the map and cards, validate, then publish into the existing Literature note before `## My Notes`.
+5. `knowledge-integration.md`: search and update existing Concepts, Questions, and Research Area MOCs only where evidence warrants it. Persist `knowledge-integration.md` with links to changes, then run `paperflow process` once more.
+
+Resume from the first pending stage shown in `state.json`; completed section files are reusable. Do not read `source.md` all at once or create paper evidence from memory. When the converter garbles a table, equation, or figure, inspect that PDF page directly and record uncertainty. Keep research inference out of `evidence.jsonl` and label it in knowledge notes.

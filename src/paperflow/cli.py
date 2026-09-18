@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import os
 import sys
 from datetime import UTC, datetime
@@ -16,6 +17,9 @@ from rich.table import Table
 
 from .config import Config, config_path, load_config, load_manifest, save_manifest, write_config
 from .discovery import command_available, discover_vaults, zotero_profile_found
+from .ingest import ingest as ingest_paper
+from .process import inspect as inspect_paper
+from .process import publish_note as publish_paper_note
 from .sync import changes, synchronize
 from .zotero import (
     Collection,
@@ -44,6 +48,11 @@ console = Console()
 VAULT_RESOURCES = {
     "AGENTS.md": "AGENTS.md",
     ".agents/skills/paperflow/SKILL.md": "skills/paperflow/SKILL.md",
+    ".agents/skills/paperflow/prompts/paper-map.md": "skills/paperflow/prompts/paper-map.md",
+    ".agents/skills/paperflow/prompts/section-evidence.md": "skills/paperflow/prompts/section-evidence.md",
+    ".agents/skills/paperflow/prompts/cards.md": "skills/paperflow/prompts/cards.md",
+    ".agents/skills/paperflow/prompts/paper-synthesis.md": "skills/paperflow/prompts/paper-synthesis.md",
+    ".agents/skills/paperflow/prompts/knowledge-integration.md": "skills/paperflow/prompts/knowledge-integration.md",
     "90-Templates/Concept.md": "templates/Concept.md",
     "90-Templates/Synthesis.md": "templates/Synthesis.md",
     "90-Templates/Question.md": "templates/Question.md",
@@ -66,9 +75,10 @@ def _install_vault_resources(vault: Path) -> None:
     for destination, source in VAULT_RESOURCES.items():
         path = vault / destination
         if path.exists():
-            is_legacy_agents = destination == "AGENTS.md" and path.read_text(
-                encoding="utf-8"
-            ) == LEGACY_VAULT_AGENTS
+            is_legacy_agents = (
+                destination == "AGENTS.md"
+                and path.read_text(encoding="utf-8") == LEGACY_VAULT_AGENTS
+            )
             if not is_legacy_agents:
                 continue
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -263,6 +273,90 @@ def sync(
     )
     for error in result.errors:
         console.print(f"[yellow]![/yellow] {error}")
+
+
+@app.command()
+def ingest(
+    paper: Annotated[str, typer.Argument(help="Synced Zotero key or citekey")],
+    vault: Annotated[Path | None, typer.Option("--vault", help="Vault or config path")] = None,
+    converter: Annotated[
+        str, typer.Option("--converter", help="pymupdf4llm or docling")
+    ] = "pymupdf4llm",
+) -> None:
+    """Convert a Zotero PDF into page-located Markdown and reading chunks."""
+    config = _get_config(vault)
+    try:
+        directory, created = ingest_paper(config, paper, converter)
+    except (OSError, ValueError, RuntimeError, ZoteroUnavailable) as error:
+        console.print(f"[red]✗[/red] {error}")
+        raise typer.Exit(1) from error
+    word = "Ingested" if created else "Already ingested"
+    console.print(f"[green]✓[/green] {word}: {directory}")
+
+
+@app.command()
+def process(
+    paper: Annotated[str, typer.Argument(help="Synced Zotero key or citekey")],
+    vault: Annotated[Path | None, typer.Option("--vault", help="Vault or config path")] = None,
+    section: Annotated[
+        str | None, typer.Option("--section", help="Show bounded section inputs")
+    ] = None,
+    publish_note: Annotated[
+        bool, typer.Option("--publish-note", help="Insert validated note before My Notes")
+    ] = False,
+) -> None:
+    """Reconcile staged artifacts and show the next paper-reading step."""
+    config = _get_config(vault)
+    try:
+        if publish_note:
+            note = publish_paper_note(config, paper)
+            console.print(f"[green]✓[/green] Literature note: {note}")
+        directory, state, issues = inspect_paper(config, paper)
+        if section:
+            structure = json.loads((directory / "structure.json").read_text(encoding="utf-8"))
+            match = next((entry for entry in structure["sections"] if entry["id"] == section), None)
+            if match is None:
+                raise ValueError(f"Unknown section {section}")
+            console.print(
+                f"[bold]{match['title']}[/bold], pages {match['page_start']}–{match['page_end']}"
+            )
+            for chunk in match["chunks"]:
+                console.print(f"  {directory / chunk['path']} ({chunk['characters']} characters)")
+        else:
+            for stage, value in state["stages"].items():
+                console.print(f"{stage}: {value}")
+            pending = (
+                [key for key, value in state["sections"].items() if value == "pending"]
+                if state["stages"]["mapped"] == "done"
+                else []
+            )
+            if pending:
+                console.print("Pending sections: " + ", ".join(pending))
+            for issue in issues:
+                console.print(f"[yellow]![/yellow] {issue}")
+            if issues:
+                console.print("Next: correct the validation issues above and rerun process.")
+            elif state["stages"]["mapped"] != "done":
+                console.print("Next: create paper-map.md and paper-map.json from structure.json.")
+            elif pending:
+                console.print(
+                    "Next: read one section chunk and write its evidence/<section-id>.jsonl."
+                )
+            elif state["stages"]["cards_built"] != "done":
+                console.print("Next: build method-card.md and result-card.md from evidence.jsonl.")
+            elif state["stages"]["paper_synthesized"] != "done":
+                console.print("Next: build paper-note.md from validated cards and evidence.")
+            elif state["stages"]["literature_published"] != "done":
+                console.print("Next: run paperflow process <paper> --publish-note.")
+            elif state["stages"]["knowledge_integrated"] != "done":
+                console.print(
+                    "Next: review existing knowledge notes and record knowledge-integration.md."
+                )
+        if issues:
+            raise typer.Exit(1)
+    except (OSError, ValueError) as error:
+        console.print(f"[red]✗[/red] {error}")
+        raise typer.Exit(1) from error
 
 
 @app.command()

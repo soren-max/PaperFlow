@@ -150,6 +150,20 @@ Everything under `## My Notes` belongs to you and is preserved across repeated s
 
 The manifest maps each Zotero item key to its stable citekey and note path. Changing scope does not delete notes that were synced earlier. PaperFlow never writes to Zotero and does not use a database.
 
+## V2 staged reading spike
+
+The V1 daily commands remain the same. For a high-value paper with a local Zotero PDF, install the optional PDF converter and ingest a synced citekey:
+
+```powershell
+python -m pip install -e ".[pdf]"
+paperflow ingest jiangndkg
+paperflow process jiangndkg
+```
+
+`ingest` keeps the PDF in Zotero and creates page-marked `source.md`, `structure.json`, and `state.json` under the Vault's `.paperflow/papers/<zotero-key>/`. `process` shows the next durable reading stage. The installed PaperFlow Codex skill uses versioned prompts to build a paper map, read one bounded section at a time, validate evidence cards, build method/result cards, and publish a compressed reading block before `## My Notes`. `paperflow process <citekey> --section <id>` lists that section's chunks; `--publish-note` publishes only after validation. Repeating `process` resumes from the saved artifacts.
+
+PyMuPDF4LLM is the current default converter. Use `python -m pip install -e ".[pdf-docling]"` and `paperflow ingest <citekey> --converter docling` for the Docling alternative on a fresh paper. The [converter ADR](docs/adr/pdf-to-markdown.md) gives the KG-Agent benchmark, accuracy limits, and license details. The [V2 spike report](docs/v2-spike.md) records the data flow and acceptance result.
+
 ## Development
 
 ```powershell

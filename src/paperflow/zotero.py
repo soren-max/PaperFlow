@@ -122,6 +122,26 @@ for (var selectedKey of selectedCollectionKeys) {
 return { items: output, selected_collections: selectedCollections };
 """
 
+PAPER_PDF_SCRIPT = r"""
+var item = await Zotero.Items.getByLibraryAndKeyAsync(
+  Zotero.Libraries.userLibraryID, __ITEM_KEY__
+);
+if (!item || !item.isRegularItem()) return { error: 'Zotero item not found' };
+var pdfs = [];
+for (var attachmentID of item.getAttachments()) {
+  var attachment = Zotero.Items.get(attachmentID);
+  if (!attachment || attachment.attachmentContentType !== 'application/pdf') continue;
+  var path = await attachment.getFilePathAsync();
+  if (path) pdfs.push({ key: attachment.key, path: path });
+}
+return {
+  zotero_key: item.key,
+  title: item.getField('title') || '',
+  abstract: item.getField('abstractNote') || '',
+  pdfs: pdfs
+};
+"""
+
 
 def _zot_command() -> list[str]:
     return [sys.executable, "-m", "zotero_agent"]
@@ -198,6 +218,21 @@ def fetch_snapshot(
 
 def fetch_library(collection_keys: tuple[str, ...] = (), timeout: int = 180) -> list[dict]:
     return fetch_snapshot(collection_keys, timeout)[0]
+
+
+def fetch_paper_pdf(item_key: str, timeout: int = 30) -> dict:
+    """Read one Zotero item and its PDF locators without copying attachments."""
+    script = PAPER_PDF_SCRIPT.replace("__ITEM_KEY__", json.dumps(item_key))
+    output = _run_zot(["exec", "-"], input_text=script, timeout=timeout)
+    try:
+        payload = json.loads(output)
+    except json.JSONDecodeError as error:
+        raise ZoteroUnavailable("zotero-agent returned an unreadable response") from error
+    if not isinstance(payload, dict):
+        raise ZoteroUnavailable("zotero-agent returned an unexpected response")
+    if payload.get("error"):
+        raise ZoteroUnavailable(payload["error"])
+    return payload
 
 
 def ping(timeout: int = 12) -> tuple[bool, str]:
