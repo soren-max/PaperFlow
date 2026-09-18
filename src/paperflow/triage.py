@@ -25,11 +25,15 @@ CARD_NAME = "paper-card.md"
 AREAS_DIR = "00-Research-Areas"
 QUESTIONS_DIR = "04-Questions"
 ABSTRACT_BUDGET = 4_000
-CONTEXT_BUDGET = 20_000
-CONTEXT_ENTRIES = 300
+CONTEXT_BUDGET = 12_000
+CONTEXT_ENTRIES = 100
+PACKET_BUDGET = 28_000
 SECTION_WORD_LIMIT = 80
 FRONTMATTER_HEAD = 8_192
 PRIORITIES = ("low", "medium", "high")
+PROCESSING_LEVELS = ("triage_only", "quick", "normal", "deep")
+READING_STATUSES = ("unread", "read")
+PROCESSING_STATUSES = ("unprocessed", "triaged", "processed")
 RECOMMENDATIONS = ("yes", "no")
 BASIS_TOKENS = ("abstract", "title", "tags", "annotations", "venue", "sections")
 CARD_SECTIONS = ("Problem", "Method", "Dataset", "Potential relevance", "Basis")
@@ -48,6 +52,7 @@ class TriageRow:
     status: str
     research_area: str = ""
     priority: str = ""
+    processing_level: str = ""
     deep_processing: str = ""
     issues: list[str] = field(default_factory=list)
 
@@ -115,7 +120,8 @@ def _parse_note(text: str) -> dict:
 def _shortened(value: str, budget: int) -> str:
     if len(value) <= budget:
         return value
-    return value[:budget].rstrip() + f"\n\n[… truncated at {budget} characters]"
+    marker = f"\n\n[… truncated at {budget} characters]"
+    return value[: budget - len(marker)].rstrip() + marker
 
 
 def _head(path: Path) -> tuple[dict, str]:
@@ -123,7 +129,7 @@ def _head(path: Path) -> tuple[dict, str]:
     with path.open(encoding="utf-8") as handle:
         head = handle.read(FRONTMATTER_HEAD)
         if not (match := FRONTMATTER.match(head)):
-            head = handle.read()
+            head += handle.read()
             match = FRONTMATTER.match(head)
     if match is None:
         return {}, head
@@ -134,28 +140,67 @@ def _head(path: Path) -> tuple[dict, str]:
     return (data if isinstance(data, dict) else {}), head[match.end() :]
 
 
-def _digest_line(path: Path, vault: Path, extra: str = "") -> str:
+def _brief(body: str, heading: str | None = None, limit: int = 180) -> str:
+    if heading:
+        match = re.search(rf"(?m)^## {re.escape(heading)}\s*$", body)
+        if match:
+            body = body[match.end() :]
+    body = HEADING.sub("", body)
+    for line in body.splitlines():
+        value = line.strip()
+        if not value or value.startswith(("#", "- [[", "[[", ">")):
+            continue
+        value = re.sub(r"\[\[([^]|]+)(?:\|([^]]+))?\]\]", lambda m: m.group(2) or m.group(1), value)
+        value = re.sub(r"^[*-]\s+", "", value)
+        sentence = re.split(r"(?<=[。！？])|(?<=[.!?])\s+", value, maxsplit=1)[0]
+        return sentence[:limit].rstrip() + ("…" if len(sentence) > limit else "")
+    return ""
+
+
+def _digest_line(path: Path, vault: Path, kind: str) -> tuple[str, str]:
     frontmatter, body = _head(path)
     heading = HEADING.search(body)
     title = frontmatter.get("title") or (heading.group(1) if heading else path.stem)
     tags = frontmatter.get("tags") or []
     suffix = f" — tags: {', '.join(str(tag) for tag in tags)}" if tags else ""
-    return f"- `{path.relative_to(vault).as_posix()}` — {title}{suffix}{extra}"
+    brief = _brief(body, "Why It Matters" if kind == "question" else None)
+    description = f" — {brief}" if brief else ""
+    if kind == "area":
+        related = list(dict.fromkeys(re.findall(r"\[\[([^]|]+)(?:\|[^]]+)?\]\]", body)))[:3]
+        if related:
+            description += f" — related: {', '.join(related)}"
+    return f"- `{path.relative_to(vault).as_posix()}` — {title}{suffix}{description}", body
 
 
-def context_digest(config: Config) -> str:
+def _relevance(body: str, title: str, citekey: str, terms: set[str]) -> int:
+    score = 100 if citekey and f"[[{citekey}" in body else 0
+    words = set(re.findall(r"[a-z][a-z0-9-]{2,}", title.casefold()))
+    return score + len(words & terms)
+
+
+def context_digest(config: Config, citekey: str = "", paper_text: str = "") -> str:
     """Describe the vault's current research context within a fixed budget."""
+    terms = set(re.findall(r"[a-z][a-z0-9-]{2,}", paper_text.casefold()))
     sections = [
-        ("Research Areas", config.vault / AREAS_DIR),
-        ("Open Questions", config.vault / QUESTIONS_DIR),
+        ("Research Areas", config.vault / AREAS_DIR, "area", 8),
+        ("Open Questions", config.vault / QUESTIONS_DIR, "question", 8),
     ]
     lines: list[str] = []
-    for label, directory in sections:
+    for label, directory, kind, limit in sections:
         paths = sorted(directory.glob("*.md")) if directory.is_dir() else []
         lines.append(f"### {label}")
         if not paths:
             lines.append(f"_None yet. Add notes to `{directory.name}/` to steer triage._")
-        lines.extend(_digest_line(path, config.vault) for path in paths)
+        entries = [(_digest_line(path, config.vault, kind), path) for path in paths]
+        entries.sort(
+            key=lambda item: (
+                -_relevance(item[0][1], item[1].stem, citekey, terms),
+                item[1].name.casefold(),
+            )
+        )
+        lines.extend(entry[0] for entry, _path in entries[:limit])
+        if len(entries) > limit:
+            lines.append(f"… {len(entries) - limit} further {label} omitted.")
         lines.append("")
 
     records = load_manifest(config).get("items", {})
@@ -195,7 +240,45 @@ def _section_titles(config: Config, key: str) -> list[str] | None:
     return [f"{entry['id']}  {entry['title']}" for entry in entries]
 
 
-def prepare_packet(config: Config, key: str, record: dict, context: str) -> str:
+def _linked_notes(config: Config, citekey: str) -> list[str]:
+    links = []
+    for folder in ("02-Concepts", "03-Synthesis", QUESTIONS_DIR):
+        directory = config.vault / folder
+        for path in sorted(directory.glob("*.md")) if directory.is_dir() else []:
+            if f"[[{citekey}" in path.read_text(encoding="utf-8"):
+                links.append(path.relative_to(config.vault).as_posix())
+    return links
+
+
+def _paper_status(config: Config, key: str, previous: dict, has_card: bool) -> tuple[str, str]:
+    pipeline_path = config.state_dir / "papers" / key / "state.json"
+    pipeline = json.loads(pipeline_path.read_text(encoding="utf-8")) if pipeline_path.is_file() else {}
+    stages = pipeline.get("stages", {})
+    reading = previous.get("reading_status", "unread")
+    processing = previous.get("processing_status", "unprocessed")
+    if reading not in READING_STATUSES:
+        reading = "unread"
+    if processing not in PROCESSING_STATUSES:
+        processing = "unprocessed"
+    if stages.get("paper_synthesized") == "done" or stages.get("knowledge_integrated") == "done":
+        reading = "read"
+    if stages.get("knowledge_integrated") == "done":
+        processing = "processed"
+    elif has_card and processing == "unprocessed":
+        processing = "triaged"
+    if processing == "processed":
+        reading = "read"
+    return reading, processing
+
+
+def prepare_packet(
+    config: Config,
+    key: str,
+    record: dict,
+    context: str,
+    reading_status: str = "unread",
+    processing_status: str = "unprocessed",
+) -> str:
     """Build the bounded triage input for one paper and return its text."""
     note_path = config.vault / record.get("note_path", "")
     if not note_path.is_file():
@@ -203,17 +286,23 @@ def prepare_packet(config: Config, key: str, record: dict, context: str) -> str:
     raw = note_path.read_text(encoding="utf-8")
     note = _parse_note(raw)
     titles = _section_titles(config, key)
+    links = _linked_notes(config, record.get("citekey") or "")
     blocks = [
         "# Triage packet",
         "",
         f"- citekey: `{record.get('citekey')}`",
         f"- zotero_key: `{key}`",
         f"- note: `{record.get('note_path')}`",
+        f"- Literature Note: {'yes' if note_path.is_file() else 'no'}",
+        f"- reading_status: {reading_status}",
+        f"- processing_status: {processing_status}",
+        f"- linked Concept / Synthesis / Question notes: {', '.join(links[:12]) if links else 'none'}"
+        + (f"; {len(links) - 12} more omitted" if len(links) > 12 else ""),
         "",
         "## Paper Metadata",
         "",
         "```yaml",
-        note["frontmatter"],
+        _shortened(note["frontmatter"], 2_000),
         "```",
         "",
         f"- Title: {note['title']}",
@@ -229,11 +318,13 @@ def prepare_packet(config: Config, key: str, record: dict, context: str) -> str:
         "",
         "## Annotations",
         "",
-        note["annotations"].strip() or "_No PDF annotations in Zotero._",
+        _shortened(note["annotations"].strip(), 4_000) or "_No PDF annotations in Zotero._",
         "",
         "## Section Titles",
         "",
-        "\n".join(titles) if titles else "unavailable (paper is not ingested yet)",
+        _shortened("\n".join(titles), 3_000)
+        if titles
+        else "unavailable (paper is not ingested yet)",
         "",
         "## Research Context",
         "",
@@ -246,7 +337,8 @@ def prepare_packet(config: Config, key: str, record: dict, context: str) -> str:
         "Record `unsupported` rather than guessing when a required field is not stated here.",
         "",
     ]
-    return "\n".join(blocks)
+    packet = "\n".join(blocks)
+    return _shortened(packet, PACKET_BUDGET)
 
 
 def _split_sections(text: str) -> dict[str, str]:
@@ -295,10 +387,20 @@ def validate_card(path: Path, state: dict) -> tuple[list[str], dict]:
     if isinstance(priority, str) and priority.strip() and priority not in PRIORITIES:
         issues.append(f"paper-card.md: priority must be one of {', '.join(PRIORITIES)}")
     recommendation = _scalar(frontmatter.get("deep_processing"))
-    if not isinstance(recommendation, str) or not recommendation.strip():
-        issues.append("paper-card.md: missing deep_processing")
-    elif recommendation not in RECOMMENDATIONS:
+    if recommendation is not None and recommendation not in RECOMMENDATIONS:
         issues.append("paper-card.md: deep_processing must be yes or no")
+    processing_level = _scalar(frontmatter.get("processing_level"))
+    if processing_level is None and recommendation in RECOMMENDATIONS:
+        processing_level = "deep" if recommendation == "yes" else "triage_only"
+    elif processing_level is None:
+        issues.append("paper-card.md: missing processing_level")
+    elif processing_level not in PROCESSING_LEVELS:
+        issues.append(
+            f"paper-card.md: processing_level must be one of {', '.join(PROCESSING_LEVELS)}"
+        )
+    if processing_level in PROCESSING_LEVELS and recommendation in RECOMMENDATIONS:
+        if (processing_level == "deep") != (recommendation == "yes"):
+            issues.append("paper-card.md: deep_processing conflicts with processing_level")
     tokens = _basis_tokens(frontmatter.get("basis"))
     if not tokens:
         issues.append("paper-card.md: basis must name the packet inputs used")
@@ -321,35 +423,53 @@ def validate_card(path: Path, state: dict) -> tuple[list[str], dict]:
     card = {
         "research_area": _scalar(frontmatter.get("research_area")) or "",
         "priority": priority or "",
-        "deep_processing": recommendation or "",
+        "processing_level": processing_level or "",
+        "deep_processing": "yes" if processing_level == "deep" else "no",
         "basis": tokens,
     }
     return issues, card
 
 
 def summary(config: Config) -> dict:
-    """Count triage progress from state files only, without re-reading Literature notes."""
+    """Count progress from PaperFlow state without re-reading Literature notes."""
     records = load_manifest(config).get("items", {})
     root = config.state_dir / "triage"
-    prepared = carded = high = recommended = 0
-    state_paths = sorted(root.glob("*/state.json")) if root.is_dir() else []
-    for state_path in state_paths:
+    prepared = carded = high = recommended = processed = triaged = 0
+    levels = {level: 0 for level in PROCESSING_LEVELS}
+    for key in records:
+        state_path = root / key / "state.json"
+        if not state_path.is_file():
+            _reading, processing = _paper_status(config, key, {}, False)
+            processed += int(processing == "processed")
+            continue
         try:
             state = json.loads(state_path.read_text(encoding="utf-8"))
         except (OSError, json.JSONDecodeError):
             continue
         prepared += 1
+        _reading, processing = _paper_status(config, key, state, bool(state.get("card")))
+        processed += int(processing == "processed")
+        triaged += int(processing == "triaged")
         if not state.get("card") or not (state_path.parent / CARD_NAME).is_file():
             continue
         carded += 1
         high += int(state["card"].get("priority") == "high")
-        recommended += int(state["card"].get("deep_processing") == "yes")
+        level = state["card"].get("processing_level") or (
+            "deep" if state["card"].get("deep_processing") == "yes" else "triage_only"
+        )
+        if level in levels:
+            levels[level] += 1
+        recommended += int(level == "deep")
     return {
         "prepared": prepared,
         "carded": carded,
         "high": high,
         "recommended": recommended,
         "pending": max(len(records) - carded, 0),
+        "levels": levels,
+        "processed": processed,
+        "triaged": triaged,
+        "unprocessed": max(len(records) - processed - triaged, 0),
     }
 
 
@@ -394,7 +514,6 @@ def triage(
     result = TriageResult()
     result.remaining = max(sum(entry[2] for entry in examined) - limit, 0)
     candidates = ranked[:limit]
-    context: str | None = None
     now = datetime.now(UTC).isoformat()
 
     for key, record, _needs_work in candidates:
@@ -418,10 +537,17 @@ def triage(
             except json.JSONDecodeError:
                 previous = {}
         stale = previous.get("note_sha256") != note_hash
-        if refresh or stale or not packet_path.is_file():
-            if context is None:
-                context = context_digest(config)
-            packet = prepare_packet(config, key, record, context)
+        reading_status, processing_status = _paper_status(
+            config, key, previous, bool(previous.get("card")) and card_path.is_file() and not stale
+        )
+        note = _parse_note(note_path.read_text(encoding="utf-8"))
+        context = context_digest(
+            config,
+            record.get("citekey") or "",
+            f"{note['title']} {note['abstract']} {' '.join(str(tag) for tag in note['tags'])}",
+        )
+        packet = prepare_packet(config, key, record, context, reading_status, processing_status)
+        if refresh or not packet_path.is_file() or packet_path.read_text(encoding="utf-8") != packet:
             packet_path.write_text(packet, encoding="utf-8")
             result.ready += 1
         titles = _section_titles(config, key) is not None
@@ -434,6 +560,8 @@ def triage(
             "packet_sha256": _sha256(packet_path.read_text(encoding="utf-8")),
             "sections_available": titles,
             "prepared_at": now,
+            "reading_status": reading_status,
+            "processing_status": processing_status,
             "card": None,
         }
         if card_path.is_file() and not stale:
@@ -441,12 +569,17 @@ def triage(
             row.issues = issues
             row.research_area = card.get("research_area", "")
             row.priority = card.get("priority", "")
+            row.processing_level = card.get("processing_level", "")
             row.deep_processing = card.get("deep_processing", "")
             if issues:
                 row.status = "invalid"
+                if state["processing_status"] == "triaged":
+                    state["processing_status"] = "unprocessed"
             else:
                 row.status = "card"
                 state["card"] = card
+                if state["processing_status"] == "unprocessed":
+                    state["processing_status"] = "triaged"
                 result.valid += 1
                 result.high += int(card["priority"] == "high")
                 result.recommended += int(card["deep_processing"] == "yes")

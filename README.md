@@ -117,7 +117,7 @@ Running `paperflow` with no command is the same as `paperflow status`.
 
 - `sync` reads regular items and PDF annotations from the selected Zotero scope.
 - `triage` prepares bounded packets for synced papers and reports which ones deserve deep processing.
-- `status` shows the active scope, Zotero papers, synced/pending notes, new annotations, triage progress, and the last sync.
+- `status` shows the active scope, Zotero papers, synced/pending notes, new annotations, triage and processing counts, and the last sync.
 - `doctor` checks configuration, Vault, Zotero bridge, Codex, and Git, with a direct fix when something is wrong.
 
 ## Using PaperFlow with Codex
@@ -164,7 +164,7 @@ paperflow triage             # the backlog, up to --limit papers
 paperflow triage jiangndkg   # one paper
 ```
 
-The command builds `.paperflow/triage/<zotero-key>/packet.md` from the Literature note — metadata, abstract, Zotero annotations, section titles when the paper is already ingested, and a digest of `00-Research-Areas/`, `04-Questions/`, and the existing Literature. It reads no PDF, needs no Zotero connection, and no converter. Then, in Codex, the skill reads `prompts/triage.md` and writes `paper-card.md` beside the packet:
+The command builds a bounded `.paperflow/triage/<zotero-key>/packet.md` from the Literature note, brief relevant Research Areas and Questions, linked knowledge notes, and existing reading and processing state. It reads no PDF, needs no Zotero connection, and no converter. Then, in Codex, the skill reads `prompts/triage.md` and writes `paper-card.md` beside the packet:
 
 ```markdown
 ---
@@ -173,14 +173,14 @@ citekey: jiangndkg
 zotero_key: J68KBEZ6
 research_area: KG-augmented RAG
 priority: high
-deep_processing: "yes"
+processing_level: deep
 basis: abstract, tags
 ---
 ```
 
-Rerun `paperflow triage` to validate the card and print priorities. A card is a routing decision, not a summary: five sections, each under 80 words, and the CLI rejects a card that is too long, that cites an input the packet did not contain, or that does not match the paper. Repeated runs order still-pending papers first, so you walk through a large backlog in batches.
+Rerun `paperflow triage` to validate the card and save its state. `priority` (`low`/`medium`/`high`) describes research value; `processing_level` (`triage_only`/`quick`/`normal`/`deep`) describes warranted reading depth. `reading_status` and `processing_status` distinguish a valuable paper from work that still needs doing. Older cards with `deep_processing` remain valid. A card is a routing decision, not a summary: five sections, each under 80 words, and the CLI rejects an invalid field, an unsupported input, or a card for another paper. Repeated runs order still-pending papers first.
 
-Keep `00-Research-Areas/` current — it is what triage judges relevance against. Only papers a card marks `deep_processing: yes` should continue to the staged workflow below. The [V3 triage report](docs/v3-triage.md) records the packet contract and the context budget.
+Keep `00-Research-Areas/` and `04-Questions/` current: their brief content informs relevance. A `deep` card merits the staged workflow when its processing status is still `unprocessed` or `triaged`. The [V3 triage report](docs/v3-triage.md) records the packet contract and the context budget.
 
 ## V2 staged reading spike
 

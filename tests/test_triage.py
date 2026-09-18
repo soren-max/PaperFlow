@@ -10,7 +10,14 @@ from paperflow.cli import app
 from paperflow.config import Config
 from paperflow.ingest import ingest
 from paperflow.sync import synchronize
-from paperflow.triage import CARD_SECTIONS, context_digest, summary, triage, validate_card
+from paperflow.triage import (
+    CARD_SECTIONS,
+    PACKET_BUDGET,
+    context_digest,
+    summary,
+    triage,
+    validate_card,
+)
 
 PDF_ONLY = "ZZPDFONLY"
 
@@ -123,17 +130,22 @@ def test_context_digest_reads_areas_questions_and_literature(tmp_path):
     config = _synced(tmp_path)
     (config.vault / "00-Research-Areas").mkdir()
     (config.vault / "00-Research-Areas/KG-RAG.md").write_text(
-        "---\ntags: [graphs]\n---\n\n# KG-augmented Retrieval\n", encoding="utf-8"
+        "---\ntags: [graphs]\n---\n\n# KG-augmented Retrieval\n\n"
+        "Studies graph retrieval under incomplete evidence.\n",
+        encoding="utf-8",
     )
     (config.vault / "04-Questions").mkdir()
     (config.vault / "04-Questions/incomplete-kg.md").write_text(
-        "---\nstatus: open\n---\n\n# How do methods behave under incomplete KGs?\n",
+        "---\nstatus: open\n---\n\n# How do methods behave under incomplete KGs?\n\n"
+        "## Why It Matters\n\nMissing edges may hide valid paths.\n",
         encoding="utf-8",
     )
     digest = context_digest(config)
     assert "### Research Areas" in digest
     assert "KG-augmented Retrieval" in digest
     assert "How do methods behave under incomplete KGs?" in digest
+    assert "Missing edges may hide valid paths." in digest
+    assert "Studies graph retrieval under incomplete evidence." in digest
     assert "- `example2026` — example2026 title — tags: retrieval, knowledge-graph" in digest
 
 
@@ -204,25 +216,28 @@ def test_valid_card_is_accepted_and_summarized(tmp_path):
     assert not result.rows[0].issues
     assert (result.valid, result.high, result.recommended) == (1, 1, 1)
     counts = summary(config)
-    assert counts == {"prepared": 1, "carded": 1, "high": 1, "recommended": 1, "pending": 0}
+    assert counts["levels"] == {"triage_only": 0, "quick": 0, "normal": 0, "deep": 1}
+    assert counts["processed"] == 0
+    assert counts["triaged"] == 1
+    assert counts["pending"] == 0
+    state = json.loads((_triage_dir(config) / "state.json").read_text(encoding="utf-8"))
+    assert state["card"]["processing_level"] == "deep"
+    assert state["processing_status"] == "triaged"
 
 
 def test_summary_counts_a_packet_without_a_card_as_pending(tmp_path):
     config = _synced(tmp_path)
     triage(config)
-    assert summary(config) == {
-        "prepared": 1,
-        "carded": 0,
-        "high": 0,
-        "recommended": 0,
-        "pending": 1,
-    }
+    assert summary(config)["pending"] == 1
+    assert summary(config)["unprocessed"] == 1
 
 
 @pytest.mark.parametrize(
     ("overrides", "expected"),
     [
         ({"priority": "urgent"}, "priority must be one of"),
+        ({"processing_level": "extreme"}, "processing_level must be one of"),
+        ({"processing_level": "quick"}, "deep_processing conflicts with processing_level"),
         ({"deep_processing": "maybe"}, "deep_processing must be yes or no"),
         ({"citekey": "someoneelse"}, "citekey does not match"),
         ({"research_area": ""}, "missing research_area"),
@@ -283,3 +298,76 @@ def test_triage_command_reports_an_unknown_paper(tmp_path, monkeypatch):
     result = CliRunner().invoke(app, ["triage", "nosuchpaper"])
     assert result.exit_code == 1
     assert "paperflow sync" in result.output
+
+
+def test_processing_level_is_independent_of_priority_and_persisted(tmp_path):
+    config = _synced(tmp_path)
+    triage(config)
+    _write_card(config, _card(priority="high", processing_level="quick", deep_processing='"no"'))
+    result = triage(config)
+    assert result.rows[0].status == "card"
+    state = json.loads((_triage_dir(config) / "state.json").read_text(encoding="utf-8"))
+    assert state["card"]["priority"] == "high"
+    assert state["card"]["processing_level"] == "quick"
+    assert summary(config)["levels"]["quick"] == 1
+
+
+def test_new_card_needs_no_legacy_deep_flag_and_invalid_level_fails_cli(tmp_path, monkeypatch):
+    config = _synced(tmp_path)
+    triage(config)
+    new_card = _card(processing_level="normal").replace("deep_processing: yes\n", "")
+    _write_card(config, new_card)
+    assert triage(config).rows[0].status == "card"
+    assert summary(config)["levels"]["normal"] == 1
+    _write_card(config, new_card.replace("processing_level: normal", "processing_level: extreme"))
+    monkeypatch.setattr("paperflow.cli._get_config", lambda vault=None: config)
+    result = CliRunner().invoke(app, ["triage", "example2026"])
+    assert result.exit_code == 1
+    assert "processing_level must be one of" in result.output
+
+
+def test_packet_includes_current_status_links_and_stays_bounded(tmp_path):
+    config = _synced(tmp_path, [_paper(abstract="graph evidence " * 5000)])
+    (config.vault / "02-Concepts").mkdir()
+    (config.vault / "02-Concepts/Graph.md").write_text(
+        "# Graph\n\n[[example2026]]\n", encoding="utf-8"
+    )
+    triage(config)
+    packet = (_triage_dir(config) / "packet.md").read_text(encoding="utf-8")
+    assert len(packet) <= PACKET_BUDGET
+    assert "reading_status: unread" in packet
+    assert "processing_status: unprocessed" in packet
+    assert "02-Concepts/Graph.md" in packet
+    assert "Literature Note: yes" in packet
+
+
+def test_completed_pipeline_sets_read_and_processed_without_repeating_work(tmp_path):
+    config = _synced(tmp_path)
+    pipeline = config.state_dir / "papers" / "ABCD1234"
+    pipeline.mkdir(parents=True)
+    (pipeline / "state.json").write_text(
+        json.dumps({"stages": {"paper_synthesized": "done", "knowledge_integrated": "done"}}),
+        encoding="utf-8",
+    )
+    triage(config)
+    packet = (_triage_dir(config) / "packet.md").read_text(encoding="utf-8")
+    assert "reading_status: read" in packet
+    assert "processing_status: processed" in packet
+    _write_card(config, _card(processing_level="deep"))
+    triage(config)
+    state = json.loads((_triage_dir(config) / "state.json").read_text(encoding="utf-8"))
+    assert state["processing_status"] == "processed"
+    assert state["card"]["processing_level"] == "deep"
+
+
+def test_status_shows_compact_triage_and_processing_counts(tmp_path, monkeypatch):
+    config = _synced(tmp_path)
+    triage(config)
+    _write_card(config, _card(processing_level="deep"))
+    triage(config)
+    monkeypatch.setattr("paperflow.cli._get_config", lambda vault=None: config)
+    monkeypatch.setattr("paperflow.cli.fetch_snapshot", lambda *args, **kwargs: ([], []))
+    result = CliRunner().invoke(app, ["status"])
+    assert result.exit_code == 0, result.output
+    assert "1 deep" in result.output
+    assert "1 triaged" in result.output

@@ -5,7 +5,7 @@ version: 1
 
 # Triage one paper
 
-Inputs: one `packet.md` from `.paperflow/triage/<zotero-key>/`. It contains the Literature frontmatter, parsed metadata, the Zotero abstract, Zotero annotations, section titles when the paper is already ingested, and a digest of the Vault's Research Areas, open Questions, and existing Literature. It contains no PDF text.
+Inputs: one `packet.md` from `.paperflow/triage/<zotero-key>/`. It contains bounded Literature metadata, abstract, annotations, section titles when ingested, reading and processing status, linked knowledge notes, and brief relevant Research Areas and Questions. It contains no PDF text.
 
 Outputs: `paper-card.md` in the same folder, in exactly this shape:
 
@@ -16,7 +16,7 @@ citekey: example2026
 zotero_key: ABCD1234
 research_area: KG-augmented Retrieval
 priority: high
-deep_processing: "yes"
+processing_level: deep
 basis: abstract, tags
 ---
 
@@ -38,17 +38,15 @@ basis: abstract, tags
 ...
 ```
 
-Quote `deep_processing`, because YAML reads a bare `yes` as a boolean.
-
 Copy `citekey` and `zotero_key` from the packet; the CLI rejects a card whose keys do not match it. `research_area` names one Research Area from the digest, or a short new label when the paper opens a new area.
 
 Body: `## Problem`, `## Method`, `## Dataset`, `## Potential relevance`, `## Basis`, each under 80 words.
 
 This is a routing decision, not a reading. Write no summary and no narrative of the paper. One or two sentences per section. `## Dataset` may be the single word `unknown`.
 
-`priority` is relevance to *this* researcher, not paper quality. Derive it from the Research Areas and open Questions in the digest, how much this paper overlaps existing Literature, and whether it fills a gap or duplicates a source already held. Say which in `## Potential relevance`, naming an actual Research Area or Question from the digest.
+`priority` is research value to *this* researcher (`low`, `medium`, `high`), not paper quality or remaining reading effort. Use the brief Research Area content and the actual core of an open Question to judge relevance. Name the specific Area or Question in `## Potential relevance`; linked notes alone do not prove a paper addresses it.
 
-`deep_processing` is `yes` only when the paper would repay the staged evidence pipeline: a method worth reproducing, results this researcher would cite, a disagreement with an existing source, or direct relevance to an open Question. Reserve `high` + `yes` for a small number of papers.
+`processing_level` is the depth the paper merits (`triage_only`, `quick`, `normal`, `deep`), independent of priority and completion. Reserve `deep` for a method worth reproducing, results this researcher would cite, a disagreement, or direct relevance to an open Question. The packet's `reading_status` and `processing_status` show what has already been done. If `processed`, state that no repeat deep work is needed; a paper can still have `priority: high` and `processing_level: deep` because that describes its value and warranted depth. Older cards with `deep_processing: "yes"/"no"` remain accepted, but new cards should use `processing_level`.
 
 Set `basis` to the packet inputs the judgment actually rests on, chosen from `abstract`, `title`, `tags`, `annotations`, `venue`, `sections`. Use `sections` only when the packet lists section titles.
 

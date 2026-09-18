@@ -1,13 +1,12 @@
 ---
 name: paperflow
-description: Work in a PaperFlow Markdown research vault to triage synced Zotero papers, review recently synced literature, build or update cross-paper concepts, synthesize a topic, maintain open research questions, or recommend what to read next. Use for research knowledge work in a vault with 00-Research-Areas, 01-Literature, 02-Concepts, 03-Synthesis, and 04-Questions; do not use it to edit Zotero or fabricate missing paper evidence.
+description: Work in a PaperFlow Markdown research vault to review recently synced Zotero literature, build or update cross-paper concepts, synthesize a topic, maintain open research questions, or recommend what to read next. Use for research knowledge work in a vault with 01-Literature, 02-Concepts, 03-Synthesis, and 04-Questions; do not use it to edit Zotero or fabricate missing paper evidence.
 ---
 
 # PaperFlow Research Agent
 
 Treat the vault as a small evidence-to-reasoning system:
 
-- `00-Research-Areas/` is the relevance layer: what this researcher is actively working on. Triage judges every incoming paper against it.
 - `01-Literature/` is the evidence layer: one source-grounded note per Zotero item, named by stable citekey.
 - `02-Concepts/` is the reasoning layer for stable ideas that accumulate across papers.
 - `03-Synthesis/` is the reasoning layer for a question- or topic-specific cross-paper account.
@@ -60,16 +59,6 @@ Use the current Literature, Concepts, Questions, and gaps or limitations recorde
 ## Maintain questions
 
 Put durable unresolved questions or hypotheses in `04-Questions/`. Update a matching question when one exists. Keep evidence separate from working hypotheses, link the exact supporting or conflicting citekeys, and record what observation or reading would resolve the question. Do not present a hypothesis as a paper finding.
-
-## Triage a paper (V3)
-
-Use this before any deep reading. Triage decides whether a paper earns the staged pipeline below, and it never opens the PDF.
-
-Run `paperflow triage <citekey>` for one paper or `paperflow triage` for the backlog. The command prepares `.paperflow/triage/<zotero-key>/packet.md` from bounded source metadata and relevant Vault context. Read that packet and `prompts/triage.md`, then write `paper-card.md` beside the packet. Run `paperflow triage <citekey>` again to validate the card and register its status in `.paperflow/triage/<zotero-key>/state.json`; fix any reported error.
-
-A card is a routing decision, not a reading. Keep `priority` (research value) separate from `processing_level` (suggested effort). The packet includes reading and processing status, so a paper already processed should not be recommended for repeat deep work merely because its research value is high. Follow the prompt's short card format. Do not read `source.md`, infer paper findings from Vault questions, or assert anything the packet does not state. Triage is offline and needs no PDF converter.
-
-Use `processing_level: deep` to identify papers that would merit the staged workflow if they are still unprocessed. Check `processing_status` before recommending that work.
 
 ## Process a completed paper (V2)
 

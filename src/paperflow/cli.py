@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import sys
@@ -99,6 +100,10 @@ PRE_TRIAGE_VAULT_AGENTS = """# PaperFlow research rules
 - Keep Markdown human-readable and mark inference, uncertainty, and missing evidence clearly.
 """
 REPLACEABLE_VAULT_AGENTS = (LEGACY_VAULT_AGENTS, PRE_TRIAGE_VAULT_AGENTS)
+PRE_TRIAGE_SKILL_SHA256 = {
+    "e4d6c80f4d56610e497c476a70053634b3fa1a5add52586239b6ffebab16e4d9",
+    "3a8a945cc07eba18a424a60480a435ff34d7ba2fedb5d412b5786a2dee6ff85a",
+}
 
 
 def _install_vault_resources(vault: Path) -> None:
@@ -110,7 +115,12 @@ def _install_vault_resources(vault: Path) -> None:
                 destination == "AGENTS.md"
                 and path.read_text(encoding="utf-8") in REPLACEABLE_VAULT_AGENTS
             )
-            if not is_legacy_agents:
+            is_original_skill = (
+                destination == ".agents/skills/paperflow/SKILL.md"
+                and hashlib.sha256(path.read_bytes().replace(b"\r\n", b"\n")).hexdigest()
+                in PRE_TRIAGE_SKILL_SHA256
+            )
+            if not (is_legacy_agents or is_original_skill):
                 continue
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(resources.joinpath(source).read_text(encoding="utf-8"), encoding="utf-8")
@@ -351,14 +361,14 @@ def triage(
         if hidden := len(result.rows) - len(rows):
             console.print(f"[dim]… {hidden} validated cards hidden. Narrow with --limit.[/dim]")
     table = Table(show_header=True, header_style="bold")
-    for column in ("Paper", "Research area", "Priority", "Deep", "Status"):
+    for column in ("Paper", "Research area", "Priority", "Level", "Status"):
         table.add_column(column)
     for row in rows:
         table.add_row(
             row.citekey,
             row.research_area or "—",
             row.priority or "—",
-            row.deep_processing or "—",
+            row.processing_level or "—",
             TRIAGE_LABELS.get(row.status, row.status),
         )
     console.print(table)
@@ -369,7 +379,7 @@ def triage(
         console.print(f"[yellow]![/yellow] Literature note is missing: {missing}")
     console.print(
         f"\n{result.ready} packets prepared · {result.valid} cards valid · "
-        f"{result.high} high priority · {result.recommended} recommend deep processing"
+        f"{result.high} high priority · {result.recommended} deep level"
     )
     invalid = any(row.issues for row in result.rows)
     pending = any(row.status in ("ready", "stale") for row in result.rows)
@@ -510,12 +520,18 @@ def status(
     table.add_row("Literature", detail)
     table.add_row("Annotations", f"{annotations:,} new" if annotations is not None else "—")
     counts = triage_summary(config)
-    triage_detail = f"{counts['carded']:,} triaged"
-    if counts["high"] or counts["recommended"]:
-        triage_detail += f" · {counts['high']:,} high · {counts['recommended']:,} deep"
-    if counts["pending"]:
-        triage_detail += f" · {counts['pending']:,} pending"
+    levels = counts["levels"]
+    triage_detail = (
+        f"{levels['deep']:,} deep · {levels['normal']:,} normal · "
+        f"{levels['quick']:,} quick · {levels['triage_only']:,} triage-only · "
+        f"{counts['pending']:,} pending"
+    )
     table.add_row("Triage", triage_detail)
+    table.add_row(
+        "Processing",
+        f"{counts['processed']:,} processed · {counts['triaged']:,} triaged · "
+        f"{counts['unprocessed']:,} unprocessed",
+    )
     table.add_row("Last sync", _relative_time(manifest.get("last_sync_at")))
     console.print(Panel(table, title="[bold]PaperFlow[/bold]", expand=False))
     if pending:
