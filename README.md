@@ -37,6 +37,10 @@ codex
 
 Use `-SkipCodex` or `-SkipZotero` when you intentionally want to configure that part later. Re-running setup is safe: the virtual environment and existing PaperFlow configuration are reused, while your customized Vault instructions and templates remain untouched.
 
+For Codex running in WSL, use the [WSL bridge](docs/wsl-bridge.md) to call this
+same Windows PaperFlow installation from the same Windows Vault. Windows remains
+the home for PaperFlow, Zotero, and Obsidian; no Vault or skill copy is needed.
+
 ## Advanced / Manual Setup
 
 Python 3.12 or newer is required.

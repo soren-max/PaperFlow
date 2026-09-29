@@ -17,6 +17,8 @@ def test_init_installs_codex_skill_agents_and_readable_templates(tmp_path, monke
     assert result.exit_code == 0, result.output
     agents = (vault / "AGENTS.md").read_text(encoding="utf-8")
     skill = (vault / ".agents/skills/paperflow/SKILL.md").read_text(encoding="utf-8")
+    source_skill = (Path(__file__).resolve().parents[1] / ".agents/skills/paperflow/SKILL.md")
+    assert skill == source_skill.read_text(encoding="utf-8")
     concept = (vault / "90-Templates/Concept.md").read_text(encoding="utf-8")
     synthesis = (vault / "90-Templates/Synthesis.md").read_text(encoding="utf-8")
     question = (vault / "90-Templates/Question.md").read_text(encoding="utf-8")

@@ -108,6 +108,9 @@ PRE_TRIAGE_SKILL_SHA256 = {
 
 def _install_vault_resources(vault: Path) -> None:
     resources = files("paperflow").joinpath("resources")
+    # Editable installs use the repository's single skill source. Wheels embed
+    # that same tree through Hatch's force-include mapping.
+    repository_skill = Path(__file__).resolve().parents[2] / ".agents" / "skills" / "paperflow"
     for destination, source in VAULT_RESOURCES.items():
         path = vault / destination
         if path.exists():
@@ -123,7 +126,11 @@ def _install_vault_resources(vault: Path) -> None:
             if not (is_legacy_agents or is_original_skill):
                 continue
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(resources.joinpath(source).read_text(encoding="utf-8"), encoding="utf-8")
+        if source.startswith("skills/paperflow/") and repository_skill.is_dir():
+            origin = repository_skill / source.removeprefix("skills/paperflow/")
+        else:
+            origin = resources.joinpath(source)
+        path.write_text(origin.read_text(encoding="utf-8"), encoding="utf-8")
 
 
 def _get_config(path: Path | None = None) -> Config:

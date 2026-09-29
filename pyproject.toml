@@ -29,6 +29,23 @@ paperflow = "paperflow.cli:app"
 [tool.hatch.build.targets.wheel]
 packages = ["src/paperflow"]
 
+[tool.hatch.build.targets.wheel.force-include]
+".agents/skills/paperflow" = "paperflow/resources/skills/paperflow"
+
+[tool.hatch.build.targets.sdist]
+include = [
+  "/.agents/skills/paperflow",
+  "/src",
+  "/tests",
+  "/tools",
+  "/docs",
+  "/AGENTS.md",
+  "/setup-windows.ps1",
+  "/README.md",
+  "/LICENSE",
+  "/pyproject.toml",
+]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 

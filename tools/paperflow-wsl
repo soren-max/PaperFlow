@@ -1,0 +1,81 @@
+#!/usr/bin/env bash
+# Run the Windows PaperFlow installation against its Windows Zotero and Vault.
+set -euo pipefail
+
+fail() {
+    printf 'paperflow-wsl: %s\n' "$1" >&2
+    exit 2
+}
+
+[[ -r /proc/sys/kernel/osrelease ]] && grep -qi microsoft /proc/sys/kernel/osrelease ||
+    fail 'run this wrapper from WSL'
+command -v wslpath >/dev/null 2>&1 || fail 'wslpath is required'
+
+script_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)
+repo_root=$(cd -- "$script_dir/.." && pwd -P)
+windows_exe=${PAPERFLOW_WINDOWS_EXE:-"$repo_root/.venv/Scripts/paperflow.exe"}
+[[ -f "$windows_exe" && -x "$windows_exe" ]] ||
+    fail "Windows PaperFlow executable missing: $windows_exe (run setup-windows.ps1 on Windows)"
+
+to_windows_vault() {
+    local input=$1 absolute converted
+    [[ -n "$input" ]] || fail 'empty Vault path'
+    if [[ "${input,,}" == \\\\wsl\$* ]] || [[ "${input,,}" == \\\\wsl.localhost\\* ]]; then
+        fail "Vault must be on a Windows drive: $input"
+    fi
+    if [[ "$input" =~ ^[A-Za-z]:[\\/] ]] || [[ "$input" == \\\\* ]]; then
+        printf '%s' "$input"
+        return
+    fi
+    absolute=$(realpath -m -- "$input")
+    converted=$(wslpath -w -- "$absolute") || fail "cannot translate Vault path: $input"
+    # Never initialize a second Vault under the WSL filesystem via a UNC path.
+    [[ "$converted" =~ ^[A-Za-z]:\\ ]] ||
+        fail "Vault must be on a Windows drive: $input"
+    printf '%s' "$converted"
+}
+
+args=()
+command_name=${1:-}
+has_vault=false
+init_path_done=false
+while (($#)); do
+    case "$1" in
+        --vault)
+            (($# >= 2)) || fail '--vault needs a path'
+            args+=(--vault "$(to_windows_vault "$2")")
+            has_vault=true
+            shift 2
+            ;;
+        --vault=*)
+            args+=("--vault=$(to_windows_vault "${1#--vault=}")")
+            has_vault=true
+            shift
+            ;;
+        *)
+            if [[ "$command_name" == init && "$1" != init && "$1" != -* && "$init_path_done" == false ]]; then
+                args+=("$(to_windows_vault "$1")")
+                init_path_done=true
+            else
+                args+=("$1")
+            fi
+            shift
+            ;;
+    esac
+done
+
+# Windows cannot discover a WSL current directory. Pass the containing Vault
+# explicitly when one is open; otherwise use Windows PaperFlow's active Vault.
+if [[ "$has_vault" == false && "$command_name" != init ]]; then
+    current=$PWD
+    while :; do
+        if [[ -f "$current/.paperflow/config.toml" ]]; then
+            args+=(--vault "$(to_windows_vault "$current")")
+            break
+        fi
+        [[ "$current" == / ]] && break
+        current=$(dirname -- "$current")
+    done
+fi
+
+exec "$windows_exe" "${args[@]}"
