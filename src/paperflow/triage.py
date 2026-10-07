@@ -31,7 +31,13 @@ PACKET_BUDGET = 28_000
 SECTION_WORD_LIMIT = 80
 FRONTMATTER_HEAD = 8_192
 PRIORITIES = ("low", "medium", "high")
-PROCESSING_LEVELS = ("triage_only", "quick", "normal", "deep")
+PROCESSING_LEVELS = ("triage_only", "quick", "targeted", "normal", "deep")
+RESEARCH_ROLES = (
+    "direct_competitor", "component", "baseline", "benchmark",
+    "mechanism_inspiration", "background", "survey", "archive",
+)
+NOVELTY_THREATS = ("low", "medium", "high", "unknown")
+READING_GOALS = ("positioning", "implementation", "experiment_design", "baseline", "citation", "background")
 READING_STATUSES = ("unread", "read")
 PROCESSING_STATUSES = ("unprocessed", "triaged", "processed")
 RECOMMENDATIONS = ("yes", "no")
@@ -54,6 +60,9 @@ class TriageRow:
     priority: str = ""
     processing_level: str = ""
     deep_processing: str = ""
+    research_role: str = ""
+    novelty_threat: str = ""
+    reading_goal: str = ""
     issues: list[str] = field(default_factory=list)
 
 
@@ -166,10 +175,35 @@ def _digest_line(path: Path, vault: Path, kind: str) -> tuple[str, str]:
     brief = _brief(body, "Why It Matters" if kind == "question" else None)
     description = f" — {brief}" if brief else ""
     if kind == "area":
+        question = frontmatter.get("research_question")
+        if isinstance(question, str) and question.strip():
+            description += f" — research question: {question[:240]}"
+        contributions = frontmatter.get("contributions")
+        if isinstance(contributions, dict):
+            claims = [f"{key}: {str(value)[:240]}" for key, value in list(contributions.items())[:6]]
+            description += " — contributions: " + "; ".join(claims)
         related = list(dict.fromkeys(re.findall(r"\[\[([^]|]+)(?:\|[^]]+)?\]\]", body)))[:3]
         if related:
             description += f" — related: {', '.join(related)}"
     return f"- `{path.relative_to(vault).as_posix()}` — {title}{suffix}{description}", body
+
+
+def _ledger_digest(config: Config, citekey: str, terms: set[str]) -> list[str]:
+    entries = []
+    for path in sorted((config.vault / "03-Synthesis").glob("*.md")):
+        frontmatter, body = _head(path)
+        if frontmatter.get("type") != "novelty-ledger" or frontmatter.get("status") in ("archived", "closed"):
+            continue
+        title = frontmatter.get("title") or path.stem
+        lines = [f"- `{path.relative_to(config.vault).as_posix()}` — {title}"]
+        scope = _brief(body, "Search Scope")
+        if scope:
+            lines.append(f"  Search scope (researcher context): {scope}")
+        rows = [line for line in body.splitlines() if line.startswith("|")][:8]
+        lines.extend("  " + _shortened(row, 500) for row in rows)
+        entries.append((_relevance(body, str(title), citekey, terms), path.name, lines))
+    entries.sort(key=lambda entry: (-entry[0], entry[1]))
+    return [line for _score, _name, lines in entries[:3] for line in lines]
 
 
 def _relevance(body: str, title: str, citekey: str, terms: set[str]) -> int:
@@ -192,16 +226,20 @@ def context_digest(config: Config, citekey: str = "", paper_text: str = "") -> s
         if not paths:
             lines.append(f"_None yet. Add notes to `{directory.name}/` to steer triage._")
         entries = [(_digest_line(path, config.vault, kind), path) for path in paths]
+        if kind == "question":
+            entries = [entry for entry in entries if _head(entry[1])[0].get("status", "open") not in ("resolved", "closed", "archived")]
         entries.sort(
             key=lambda item: (
                 -_relevance(item[0][1], item[1].stem, citekey, terms),
                 item[1].name.casefold(),
             )
         )
-        lines.extend(entry[0] for entry, _path in entries[:limit])
+        lines.append(_shortened("\n".join(entry[0] for entry, _path in entries[:limit]), 3_500 if kind == "area" else 2_500))
         if len(entries) > limit:
             lines.append(f"… {len(entries) - limit} further {label} omitted.")
         lines.append("")
+
+    lines.extend(["### Active Novelty Ledgers (researcher inference)", _shortened("\n".join(_ledger_digest(config, citekey, terms)), 3_000), ""])
 
     records = load_manifest(config).get("items", {})
     ordered = sorted(records.items(), key=lambda item: item[1].get("citekey") or "")
@@ -373,8 +411,9 @@ def validate_card(path: Path, state: dict) -> tuple[list[str], dict]:
         frontmatter, _ = _parse_frontmatter(text)
     except ValueError as error:
         return [str(error)], {}
-    if frontmatter.get("paperflow_card") != 1:
-        issues.append("paper-card.md needs `paperflow_card: 1` in its frontmatter")
+    card_version = frontmatter.get("paperflow_card")
+    if type(card_version) is not int or card_version not in (1, 2):
+        issues.append("paper-card.md needs `paperflow_card: 1` or `paperflow_card: 2`")
     for field_name in ("citekey", "zotero_key", "research_area", "priority"):
         value = _scalar(frontmatter.get(field_name))
         if not isinstance(value, str) or not value.strip():
@@ -401,6 +440,28 @@ def validate_card(path: Path, state: dict) -> tuple[list[str], dict]:
     if processing_level in PROCESSING_LEVELS and recommendation in RECOMMENDATIONS:
         if (processing_level == "deep") != (recommendation == "yes"):
             issues.append("paper-card.md: deep_processing conflicts with processing_level")
+    positioning = {}
+    for field_name, allowed in (
+        ("research_role", RESEARCH_ROLES),
+        ("novelty_threat", NOVELTY_THREATS),
+        ("reading_goal", READING_GOALS),
+    ):
+        value = frontmatter.get(field_name)
+        if value is None and card_version == 1:
+            continue
+        if not isinstance(value, str) or value not in allowed:
+            issues.append(f"paper-card.md: {field_name} must be one of {', '.join(allowed)}")
+        positioning[field_name] = value
+    for field_name in ("target_contributions", "focus_questions"):
+        value = frontmatter.get(field_name)
+        if value is None and card_version == 1:
+            continue
+        if not isinstance(value, list) or not all(isinstance(item, str) and item.strip() for item in value):
+            issues.append(f"paper-card.md: {field_name} must be an array of nonempty strings")
+        else:
+            positioning[field_name] = value
+    if processing_level == "targeted" and not positioning.get("focus_questions"):
+        issues.append("paper-card.md: targeted reading needs nonempty focus_questions")
     tokens = _basis_tokens(frontmatter.get("basis"))
     if not tokens:
         issues.append("paper-card.md: basis must name the packet inputs used")
@@ -426,6 +487,7 @@ def validate_card(path: Path, state: dict) -> tuple[list[str], dict]:
         "processing_level": processing_level or "",
         "deep_processing": "yes" if processing_level == "deep" else "no",
         "basis": tokens,
+        **positioning,
     }
     return issues, card
 
@@ -486,7 +548,12 @@ def _needs_triage(config: Config, key: str, record: dict) -> bool:
         return True
     if state.get("note_sha256") != _sha256(note_path.read_text(encoding="utf-8")):
         return True
-    return not (directory / CARD_NAME).is_file()
+    if state.get("research_context_sha256"):
+        note = _parse_note(note_path.read_text(encoding="utf-8"))
+        digest = context_digest(config, record.get("citekey") or "", f"{note['title']} {note['abstract']} {' '.join(str(tag) for tag in note['tags'])}")
+        if state["research_context_sha256"] != _sha256(digest):
+            return True
+    return not state.get("card") or not (directory / CARD_NAME).is_file()
 
 
 def triage(
@@ -537,6 +604,9 @@ def triage(
             except json.JSONDecodeError:
                 previous = {}
         stale = previous.get("note_sha256") != note_hash
+        card_hash = _sha256(card_path.read_text(encoding="utf-8")) if card_path.is_file() else None
+        if card_hash and previous.get("stale_card_sha256") == card_hash:
+            stale = True
         reading_status, processing_status = _paper_status(
             config, key, previous, bool(previous.get("card")) and card_path.is_file() and not stale
         )
@@ -546,6 +616,11 @@ def triage(
             record.get("citekey") or "",
             f"{note['title']} {note['abstract']} {' '.join(str(tag) for tag in note['tags'])}",
         )
+        context_hash = _sha256(context)
+        if previous.get("card") and previous.get("research_context_sha256") not in (None, context_hash):
+            stale = True
+        if stale and processing_status == "triaged":
+            processing_status = "unprocessed"
         packet = prepare_packet(config, key, record, context, reading_status, processing_status)
         if refresh or not packet_path.is_file() or packet_path.read_text(encoding="utf-8") != packet:
             packet_path.write_text(packet, encoding="utf-8")
@@ -558,11 +633,13 @@ def triage(
             "note_path": record.get("note_path"),
             "note_sha256": note_hash,
             "packet_sha256": _sha256(packet_path.read_text(encoding="utf-8")),
+            "research_context_sha256": context_hash,
             "sections_available": titles,
             "prepared_at": now,
             "reading_status": reading_status,
             "processing_status": processing_status,
             "card": None,
+            "stale_card_sha256": card_hash if stale else None,
         }
         if card_path.is_file() and not stale:
             issues, card = validate_card(card_path, state)
@@ -571,6 +648,9 @@ def triage(
             row.priority = card.get("priority", "")
             row.processing_level = card.get("processing_level", "")
             row.deep_processing = card.get("deep_processing", "")
+            row.research_role = card.get("research_role", "")
+            row.novelty_threat = card.get("novelty_threat", "")
+            row.reading_goal = card.get("reading_goal", "")
             if issues:
                 row.status = "invalid"
                 if state["processing_status"] == "triaged":

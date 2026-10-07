@@ -9,6 +9,8 @@ from pathlib import Path
 
 from .config import Config
 from .ingest import _write_json, resolve_paper
+from .positioning import validate_positioning
+from .triage import PROCESSING_LEVELS, READING_GOALS
 
 EVIDENCE_TYPES = {
     "problem",
@@ -51,6 +53,31 @@ def _validate_plan(path: Path, valid_ids: set[str]) -> dict | None:
         raise ValueError("paper-map.json needs nonempty reading_sections from structure.json")
     if len(selected) != len(set(selected)):
         raise ValueError("paper-map.json has duplicate reading_sections")
+    if "processing_level" in plan and plan["processing_level"] not in PROCESSING_LEVELS:
+        raise ValueError("paper-map.json has invalid processing_level")
+    if "reading_goal" in plan and plan["reading_goal"] not in READING_GOALS:
+        raise ValueError("paper-map.json has invalid reading_goal")
+    contributions = plan.get("target_contributions", [])
+    if not isinstance(contributions, list) or not all(isinstance(value, str) and value.strip() for value in contributions):
+        raise ValueError("paper-map.json target_contributions must be an array of nonempty strings")
+    questions = plan.get("focus_questions", [])
+    if not isinstance(questions, list):
+        raise ValueError("paper-map.json focus_questions must be an array")
+    for question in questions:
+        if not isinstance(question, dict) or not isinstance(question.get("question"), str) or not question["question"].strip():
+            raise ValueError("paper-map.json focus_questions need a nonempty question")
+        ids = question.get("section_ids")
+        if not isinstance(ids, list) or not all(isinstance(value, str) and value in selected for value in ids):
+            raise ValueError("paper-map.json focus question section_ids must be in reading_sections")
+        missing = question.get("missing_evidence")
+        if not ids and (not isinstance(missing, str) or not missing.strip()):
+            raise ValueError("paper-map.json unmapped questions need missing_evidence")
+    if plan.get("processing_level") == "targeted" and not questions:
+        raise ValueError("paper-map.json targeted reading needs focus_questions")
+    if "positioning_path" in plan:
+        value = plan["positioning_path"]
+        if not isinstance(value, str) or not value.strip():
+            raise ValueError("paper-map.json positioning_path must be a nonempty vault-relative path")
     return plan
 
 
@@ -197,9 +224,20 @@ def inspect(config: Config, paper: str) -> tuple[Path, dict, list[str]]:
             else:
                 issues.append("Literature V2 block differs from paper-note.md")
     state["stages"]["literature_published"] = "done" if published else "pending"
+    state["stages"]["positioning_created"] = "skipped"
+    if mapped and plan.get("positioning_path"):
+        state["stages"]["positioning_created"] = "pending"
+        if state["stages"]["paper_synthesized"] == "done":
+            try:
+                positioning_path = validate_positioning(config, plan, state, cards)
+                if positioning_path:
+                    state["stages"]["positioning_created"] = "done"
+            except ValueError as error:
+                issues.append(str(error))
     state["stages"]["knowledge_integrated"] = (
         "done"
-        if published and not issues and (directory / "knowledge-integration.md").is_file()
+        if published and not issues and state["stages"]["positioning_created"] != "pending"
+        and (directory / "knowledge-integration.md").is_file()
         else "pending"
     )
     _write_json(directory / "state.json", state)

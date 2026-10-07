@@ -1,25 +1,25 @@
 ---
 name: paperflow
-description: Work in a PaperFlow Markdown research vault to triage synced Zotero papers, review recently synced literature, build or update cross-paper concepts, synthesize a topic, position papers against active contribution claims, maintain a novelty ledger and research decisions, or recommend what to read next. Use for research knowledge work in a vault with 00-Research-Areas, 01-Literature, 02-Concepts, 03-Synthesis, and 04-Questions; do not use it to edit Zotero or fabricate missing paper evidence.
+description: Work in a PaperFlow Markdown research vault to triage synced Zotero papers, review recently synced literature, build or update cross-paper concepts, synthesize a topic, maintain open research questions, or recommend what to read next. Use for research knowledge work in a vault with 00-Research-Areas, 01-Literature, 02-Concepts, 03-Synthesis, and 04-Questions; do not use it to edit Zotero or fabricate missing paper evidence.
 ---
 
 # PaperFlow Research Agent
 
-Treat the vault as a small evidence-to-positioning-to-research system:
+Treat the vault as a small evidence-to-reasoning system:
 
 - `00-Research-Areas/` is the relevance layer: what this researcher is actively working on. Triage judges every incoming paper against it.
 - `01-Literature/` is the evidence layer: one source-grounded note per Zotero item, named by stable citekey.
 - `02-Concepts/` is the reasoning layer for stable ideas that accumulate across papers.
-- `03-Synthesis/` is the reasoning layer for cross-paper accounts, per-paper Positioning Cards, and project Novelty Ledgers. Positioning is researcher interpretation.
-- `04-Questions/` holds unresolved scientific questions, research decisions, working hypotheses, and research directions.
+- `03-Synthesis/` is the reasoning layer for a question- or topic-specific cross-paper account.
+- `04-Questions/` holds unresolved questions, working hypotheses, and research directions.
 
 Read `AGENTS.md` before working. Search existing notes and aliases before creating a file. Prefer updating the closest existing Concept, Synthesis, or Question. Use the light templates in `90-Templates/` when creating a note, adapting them rather than filling empty sections mechanically.
 
 ## Researcher-facing workflow
 
-Keep the researcher's interface simple: day to day, they run `paperflow sync` and ask in natural language. `triage` is optional for screening a batch, and `quick`, `targeted`, `normal`, and `deep` are internal routing decisions rather than choices the researcher must make. Do not ask them to run map, extraction, card, or other intermediate pipeline commands.
+Keep the researcher's interface simple: day to day, they run `paperflow sync` and ask in natural language. `triage` is optional for screening a batch, and `quick`, `normal`, and `deep` are internal routing decisions rather than choices the researcher must make. Do not ask them to run map, extraction, card, or other intermediate pipeline commands.
 
-When asked to “organize this paper” or an equivalent request, resolve the paper from its citekey, title, or Literature note. Inspect saved PaperFlow artifacts first, ingest and convert the Zotero PDF only if the needed source is absent or stale, read bounded sections instead of the whole source, validate evidence, then update the Literature note and relevant Concepts, Synthesis, Questions, or Research Areas. When a project is active, report what the paper changes about its contribution claims, the next decision, and remaining evidence gaps, not the internal stages.
+When asked to “organize this paper” or an equivalent request, resolve the paper from its citekey, title, or Literature note. Inspect saved PaperFlow artifacts first, ingest and convert the Zotero PDF only if the needed source is absent or stale, read bounded sections instead of the whole source, validate evidence, then update the Literature note and relevant Concepts, Synthesis, Questions, or Research Areas. Report the research result and any remaining evidence gap, not the internal stages.
 
 Favor work that advances the actual research program: read papers, connect knowledge, compare methods, identify gaps, form hypotheses, design experiments, write reviews, and simulate peer review.
 
@@ -30,16 +30,6 @@ Zotero remains the bibliographic source of truth. Do not invent or repair metada
 Do not write AI inference into PaperFlow-managed Literature content. Do not modify `## My Notes` unless the user explicitly asks. Put cross-paper interpretation in Concepts or Synthesis and label it as synthesis, inference, hypothesis, uncertainty, or missing evidence when appropriate.
 
 Every derived claim must remain traceable. Cite Literature with its exact stable citekey, normally as an Obsidian link such as `[[vaswani2017attention]]`. Preserve distinct sources even when they support the same point. A citation shows provenance; it does not make an unsupported statement true.
-
-## Contribution-centered research (V4)
-
-Read current Research Areas, relevant Questions and the matching project Novelty Ledger before choosing what to read. Optional Research Area frontmatter can hold `research_question`, a `contributions` mapping of stable IDs to exact working claims, and a `novelty_ledger` link. Use the researcher's actual saved claims; if no project is active, retain ordinary literature/concept work.
-
-Infer each paper's primary role, provisional novelty threat, reading goal and affected contribution IDs. A competitor may need a Deep Competitive Read; a verifier component may need only a Targeted Mechanism Read; a benchmark may need an Experimental Reference Read. High priority does not automatically imply deep reading. Generate concrete focus questions and map them to exact sections, reusing validated artifacts whenever possible.
-
-For positioning, read `prompts/positioning.md` and use `90-Templates/Positioning.md` to update a card inside `03-Synthesis/`. Declare its existing or chosen path in paper-map.json. Keep overlap, surviving gaps and design implications out of Literature/evidence; support paper capabilities with exact citekeys and evidence IDs, and label interpretation. Partial reading cannot prove a feature is absent. “Not found” must retain the checked corpus, date, and coverage.
-
-Read `prompts/knowledge-integration.md` to update the existing project Novelty Ledger using `90-Templates/NoveltyLedger.md`, then decision Questions, then stable Concepts. Preserve exact current claim wording beside proposed revisions. An incoming paper can narrow a claim, motivate an experiment, or expose an uncertainty. Do not silently adopt proposed contributions as the researcher's final claims.
 
 ## Review recently synced papers
 
@@ -73,7 +63,7 @@ When asked to establish a concept:
 
 ## Recommend what to read next
 
-Use the active contribution claims, Novelty Ledger, decision Questions, current Literature, Concepts and gaps recorded in Synthesis. Return a limited ranked list, usually three to five papers, with the citekey and a vault-specific reason for each. Favor papers that resolve an open question, test a weak assumption, represent a disagreement, or fill a missing method/evidence gap. Say when the vault does not contain enough evidence to rank confidently.
+Use the current Literature, Concepts, Questions, and gaps or limitations recorded in Synthesis. Return a limited ranked list, usually three to five papers, with the citekey and a vault-specific reason for each. Favor papers that resolve an open question, test a weak assumption, represent a disagreement, or fill a missing method/evidence gap. Say when the vault does not contain enough evidence to rank confidently.
 
 ## Maintain questions
 
@@ -87,8 +77,6 @@ Run `paperflow triage <citekey>` for one paper or `paperflow triage` for the bac
 
 A card is a routing decision, not a reading. Keep `priority` (research value) separate from `processing_level` (suggested effort). The packet includes reading and processing status, so a paper already processed should not be recommended for repeat deep work merely because its research value is high. Follow the prompt's short card format. Do not read `source.md`, infer paper findings from Vault questions, or assert anything the packet does not state. Triage is offline and needs no PDF converter.
 
-Version-2 cards add research_role, novelty_threat, reading_goal, target_contributions and focus_questions. These are provisional routing context; targeted requires concrete focus questions. Version-1 cards remain valid.
-
 Use `processing_level: deep` internally to identify papers that would merit the staged workflow if they are still unprocessed. Check `processing_status` before recommending that work.
 
 ## Internal paper-processing workflow (V2)
@@ -97,12 +85,11 @@ Use this workflow internally when the researcher asks to organize, read, compare
 
 Run `paperflow process <citekey>` to inspect durable progress. Work in this order, reading each prompt in `prompts/` immediately before its stage:
 
-1. `paper-map.md`: use active claims, decision Questions and the saved triage card when present, then `state.json`, `structure.json`, abstract, headings, captions, conclusion, and limitations to write `paper-map.md` plus `paper-map.json` with exact `reading_sections` IDs and focus-question section mappings. Declare positioning_path inside 03-Synthesis when positioning is relevant.
+1. `paper-map.md`: use `state.json`, `structure.json`, abstract, headings, captions, conclusion, and limitations to write `paper-map.md` plus `paper-map.json` with exact `reading_sections` IDs.
 2. `section-evidence.md`: call `paperflow process <citekey> --section <id>` and read only that section's listed chunks, one at a time. Write `evidence/<id>.jsonl`; run `paperflow process` to validate each section. All evidence quotes must occur on the cited page.
 3. `cards.md`: use validated `evidence.jsonl` to create `method-card.md` and `result-card.md`, citing evidence IDs.
 4. `paper-synthesis.md`: create `paper-note.md` from the map and cards, validate, then publish into the existing Literature note before `## My Notes`.
-5. `positioning.md`: when a positioning_path is declared, write or update the researcher-inference card at that path, retaining source/evidence provenance. Validate it with process. Legacy maps without a path skip this stage.
-6. `knowledge-integration.md`: check affected contribution claims, update the project Novelty Ledger and decision Questions, then stable Concepts and Research Area MOCs where warranted. Persist knowledge-integration.md with links and unresolved issues, then run process once more.
+5. `knowledge-integration.md`: search and update existing Concepts, Questions, and Research Area MOCs only where evidence warrants it. Persist `knowledge-integration.md` with links to changes, then run `paperflow process` once more.
 
 Resume from the first pending stage shown in `state.json`; completed section files are reusable. Do not read `source.md` all at once or create paper evidence from memory. When the converter garbles a table, equation, or figure, inspect that PDF page directly and record uncertainty. Keep research inference out of `evidence.jsonl` and label it in knowledge notes.
 

@@ -120,3 +120,30 @@ def test_init_upgrades_only_the_original_pre_triage_skill(tmp_path, monkeypatch,
     result = CliRunner().invoke(app, ["init", str(vault)])
     assert result.exit_code == 0, result.output
     assert skill.read_text(encoding="utf-8").endswith("My customization.\n")
+
+
+@pytest.mark.parametrize("line_ending", ["\n", "\r\n"])
+def test_v4_upgrades_original_resources_and_preserves_customizations(tmp_path, line_ending):
+    from paperflow.cli import VAULT_RESOURCES, _install_vault_resources
+
+    fixtures = Path(__file__).parent / "fixtures/pre_positioning"
+    originals = {}
+    for fixture in fixtures.rglob("*.md"):
+        relative = fixture.relative_to(fixtures).as_posix()
+        destination = ".agents/" + relative if relative.startswith("skills/") else relative
+        original = fixture.read_text(encoding="utf-8")
+        originals[destination] = original
+        target = tmp_path / destination
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(original.replace("\n", line_ending).encode())
+    custom = tmp_path / ".agents/skills/paperflow/prompts/knowledge-integration.md"
+    custom.write_bytes(custom.read_bytes() + b"\nMy custom integration rule.\n")
+    preserved = custom.read_bytes()
+    _install_vault_resources(tmp_path)
+    assert custom.read_bytes() == preserved
+    for destination in (".agents/skills/paperflow/SKILL.md", ".agents/skills/paperflow/prompts/triage.md", "90-Templates/ResearchArea.md"):
+        assert (tmp_path / destination).read_text(encoding="utf-8") != originals[destination]
+    assert all((tmp_path / destination).is_file() for destination in VAULT_RESOURCES)
+    before = {destination: (tmp_path / destination).read_bytes() for destination in VAULT_RESOURCES}
+    _install_vault_resources(tmp_path)
+    assert {destination: (tmp_path / destination).read_bytes() for destination in VAULT_RESOURCES} == before

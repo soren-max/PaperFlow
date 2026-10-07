@@ -216,7 +216,7 @@ def test_valid_card_is_accepted_and_summarized(tmp_path):
     assert not result.rows[0].issues
     assert (result.valid, result.high, result.recommended) == (1, 1, 1)
     counts = summary(config)
-    assert counts["levels"] == {"triage_only": 0, "quick": 0, "normal": 0, "deep": 1}
+    assert counts["levels"] == {"triage_only": 0, "quick": 0, "targeted": 0, "normal": 0, "deep": 1}
     assert counts["processed"] == 0
     assert counts["triaged"] == 1
     assert counts["pending"] == 0
@@ -371,3 +371,93 @@ def test_status_shows_compact_triage_and_processing_counts(tmp_path, monkeypatch
     assert result.exit_code == 0, result.output
     assert "1 deep" in result.output
     assert "1 triaged" in result.output
+
+
+def _positioning_card(**overrides):
+    return _card(
+        **{
+            "paperflow_card": 2,
+            "processing_level": "targeted",
+            "deep_processing": "no",
+            "research_role": "component",
+            "novelty_threat": "unknown",
+            "reading_goal": "implementation",
+            "target_contributions": "[transition_model]",
+            "focus_questions": "['What supervises the transition model?']",
+            **overrides,
+        }
+    )
+
+
+def test_targeted_card_preserves_research_intent_and_counts(tmp_path):
+    config = _synced(tmp_path)
+    triage(config)
+    _write_card(config, _positioning_card())
+    row = triage(config).rows[0]
+    assert row.status == "card"
+    assert row.research_role == "component"
+    state = json.loads((_triage_dir(config) / "state.json").read_text())
+    assert state["card"]["target_contributions"] == ["transition_model"]
+    assert state["card"]["focus_questions"] == ["What supervises the transition model?"]
+    assert state["card"]["novelty_threat"] == "unknown"
+    assert summary(config)["levels"]["targeted"] == 1
+    assert summary(config)["recommended"] == 0
+
+
+@pytest.mark.parametrize(
+    ("overrides", "message"),
+    [
+        ({"research_role": "None"}, "research_role must be one of"),
+        ({"novelty_threat": "certain"}, "novelty_threat must be one of"),
+        ({"reading_goal": "summarize_everything"}, "reading_goal must be one of"),
+        ({"target_contributions": "one_claim"}, "target_contributions must be an array"),
+        ({"focus_questions": "[]"}, "targeted reading needs nonempty focus_questions"),
+        ({"focus_questions": "[42]"}, "focus_questions must be an array"),
+    ],
+)
+def test_positioning_routing_rejects_invalid_context(tmp_path, overrides, message):
+    path = tmp_path / "paper-card.md"
+    path.write_text(_positioning_card(**overrides))
+    issues, _ = validate_card(path, _state())
+    assert any(message in issue for issue in issues)
+
+
+def test_saved_claims_and_ledger_changes_invalidate_routing(tmp_path):
+    config = _synced(tmp_path)
+    area = config.vault / "00-Research-Areas/Graph.md"
+    area.parent.mkdir()
+    area.write_text(
+        '---\nresearch_question: "Can future graph state guide routing?"\n'
+        'contributions:\n  transition_model: "Predict epistemic state deltas."\n---\n# Graph\n'
+    )
+    ledger = config.vault / "03-Synthesis/Graph-Novelty-Ledger.md"
+    ledger.parent.mkdir()
+    ledger.write_text(
+        '---\ntype: novelty-ledger\nstatus: active\n---\n# Graph Ledger\n'
+        '## Positioning\n\n| Claim | Closest work | Remaining gap |\n'
+        '|---|---|---|\n| transition_model | [[example2026]] | Not yet assessed |\n'
+        '## Search Scope\n\nLocal synced corpus only; mechanisms unread.\n'
+    )
+    triage(config)
+    packet = (_triage_dir(config) / "packet.md").read_text()
+    assert "transition_model: Predict epistemic state deltas." in packet
+    assert "Can future graph state guide routing?" in packet
+    assert "researcher inference" in packet
+    assert "Not yet assessed" in packet
+    assert "Local synced corpus only" in packet
+    _write_card(config, _positioning_card())
+    assert triage(config).rows[0].status == "card"
+    ledger.write_text(ledger.read_text().replace("Not yet assessed", "Overlap needs checking"))
+    assert triage(config).rows[0].status == "stale"
+    assert summary(config)["carded"] == 0
+    assert triage(config).rows[0].status == "stale"
+    _write_card(config, _positioning_card().replace("One short potential relevance line.", "Updated routing: check the newly suspected overlap."))
+    assert triage(config).rows[0].status == "card"
+
+
+def test_resolved_decisions_do_not_steer_triage(tmp_path):
+    config = _synced(tmp_path)
+    question = config.vault / "04-Questions/old.md"
+    question.parent.mkdir()
+    question.write_text('---\nstatus: resolved\n---\n# Obsolete decision\n')
+    assert "Obsolete decision" not in context_digest(config)

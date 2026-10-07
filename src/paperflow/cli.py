@@ -63,6 +63,9 @@ VAULT_RESOURCES = {
     "90-Templates/Concept.md": "templates/Concept.md",
     "90-Templates/Synthesis.md": "templates/Synthesis.md",
     "90-Templates/Question.md": "templates/Question.md",
+    "90-Templates/Positioning.md": "templates/Positioning.md",
+    "90-Templates/NoveltyLedger.md": "templates/NoveltyLedger.md",
+    ".agents/skills/paperflow/prompts/positioning.md": "skills/paperflow/prompts/positioning.md",
 }
 VAULT_FOLDERS = (
     "00-Research-Areas",
@@ -111,6 +114,7 @@ def _install_vault_resources(vault: Path) -> None:
     # Editable installs use the repository's single skill source. Wheels embed
     # that same tree through Hatch's force-include mapping.
     repository_skill = Path(__file__).resolve().parents[2] / ".agents" / "skills" / "paperflow"
+    known_originals = json.loads(resources.joinpath("resource-upgrades.json").read_text(encoding="utf-8"))
     for destination, source in VAULT_RESOURCES.items():
         path = vault / destination
         if path.exists():
@@ -123,7 +127,11 @@ def _install_vault_resources(vault: Path) -> None:
                 and hashlib.sha256(path.read_bytes().replace(b"\r\n", b"\n")).hexdigest()
                 in PRE_TRIAGE_SKILL_SHA256
             )
-            if not (is_legacy_agents or is_original_skill):
+            is_original_resource = (
+                hashlib.sha256(path.read_bytes().replace(b"\r\n", b"\n")).hexdigest()
+                in known_originals.get(destination, [])
+            )
+            if not (is_legacy_agents or is_original_skill or is_original_resource):
                 continue
         path.parent.mkdir(parents=True, exist_ok=True)
         if source.startswith("skills/paperflow/") and repository_skill.is_dir():
@@ -380,6 +388,8 @@ def triage(
         )
     console.print(table)
     for row in result.rows:
+        if row.research_role:
+            console.print(f"  {row.citekey}: {row.research_role} · threat {row.novelty_threat} · {row.reading_goal}")
         for issue in row.issues:
             console.print(f"[yellow]![/yellow] {issue}")
     for missing in result.missing_notes:
@@ -454,6 +464,8 @@ def process(
                 console.print("Next: build paper-note.md from validated cards and evidence.")
             elif state["stages"]["literature_published"] != "done":
                 console.print("Next: run paperflow process <paper> --publish-note.")
+            elif state["stages"].get("positioning_created") == "pending":
+                console.print("Next: use prompts/positioning.md to update the card in 03-Synthesis/.")
             elif state["stages"]["knowledge_integrated"] != "done":
                 console.print(
                     "Next: review existing knowledge notes and record knowledge-integration.md."
@@ -529,7 +541,7 @@ def status(
     counts = triage_summary(config)
     levels = counts["levels"]
     triage_detail = (
-        f"{levels['deep']:,} deep · {levels['normal']:,} normal · "
+        f"{levels['deep']:,} deep · {levels['targeted']:,} targeted · {levels['normal']:,} normal · "
         f"{levels['quick']:,} quick · {levels['triage_only']:,} triage-only · "
         f"{counts['pending']:,} pending"
     )
