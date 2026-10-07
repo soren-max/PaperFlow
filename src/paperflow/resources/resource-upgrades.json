@@ -1,0 +1,26 @@
+{
+  "AGENTS.md": [
+    "83820c3fb63856c6910ae6225b3dc1eded9afa4bd18779d5b25731462936886c"
+  ],
+  ".agents/skills/paperflow/SKILL.md": [
+    "ff314b2756ab297167312bc4aae93a2d874106fbe2ad8c810bbbe934cbcec1c7"
+  ],
+  ".agents/skills/paperflow/prompts/knowledge-integration.md": [
+    "ae1b9e1bd7d965d11dc6077df04d32357aaf7013c71b06ae24c83b8ab944bef5"
+  ],
+  ".agents/skills/paperflow/prompts/paper-map.md": [
+    "72fc6af47870a0b24f6e920876cb3a68bdae006668410d1d7dc549965ca02713"
+  ],
+  ".agents/skills/paperflow/prompts/paper-synthesis.md": [
+    "4eaac4398618badfacbc70df9f04c5d45dbd5204cf067ee4c359013880bb93e1"
+  ],
+  ".agents/skills/paperflow/prompts/triage.md": [
+    "f3b11bc3e7e6cadf15611c0ce15aa04977dfcb1b143bccc72ebcc425dd05f388"
+  ],
+  "90-Templates/ResearchArea.md": [
+    "555e997433c81b643a88f8454801842776783242934524da63c21a4afd088e5a"
+  ],
+  "90-Templates/Question.md": [
+    "ccc06e055fcb671d78f09a7d1497a8d5ffa55b390953ec77a1e16e8f95cfe6a8"
+  ]
+}
