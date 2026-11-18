@@ -41,6 +41,17 @@ For positioning, read `prompts/positioning.md` and use `90-Templates/Positioning
 
 Read `prompts/knowledge-integration.md` to update the existing project Novelty Ledger using `90-Templates/NoveltyLedger.md`, then decision Questions, then stable Concepts. Preserve exact current claim wording beside proposed revisions. An incoming paper can narrow a claim, motivate an experiment, or expose an uncertainty. Do not silently adopt proposed contributions as the researcher's final claims.
 
+## Academic Research Skills & 8-Week Program Collaboration
+
+When `academic-research-suite` (`~/.gemini/config/skills/academic-research-suite/SKILL.md` or `~/.agents/skills/academic-research-suite/SKILL.md`) or a linked `research/` / `experiments/` program is present, keep responsibilities strictly separated and never vendor `academic-research-suite` files into the Vault:
+
+- **“精读这篇论文” / Deep-read or organize a paper**: PaperFlow locates the Zotero item (or `manual-*.md` note), runs bounded `ingest`/`process`, validates `[E001]` quote/page evidence, and publishes before `## My Notes`. If guided study notes are requested, pair verified evidence with `90-Templates/MentorReading.md`, labeling teaching notes and student questions as inference rather than paper claims.
+- **“它和我的研究 Idea 有什么关系” / Position against ideas & hypotheses**: PaperFlow supplies verified `evidence.jsonl`, Positioning Cards, Novelty Ledger, and matching `RQ-xx` / `Hxx` links (`paperflow find <citekey|Hxx>`); `academic-research-suite` (`deep-research` / `research_question_agent`) analyzes research positioning and novelty threats; PaperFlow persists updates in `03-Synthesis/` and `04-Questions/` using `rq_ids`, `hypothesis_ids`, `experiment_ids`, `baseline_for`, and `challenged_by_experiments`.
+- **“实验发现一个新现象，请寻找相关工作” / Phenomenon-driven search**: Run `paperflow find "<phenomenon or Hxx>"` first to inspect already-synced Literature, `evidence.jsonl`, and `experiments/reports/`; then delegate external literature discovery to `academic-research-suite` (`ars/deep-research/WORKFLOW.md`). Only Zotero-imported papers enter `01-Literature/`.
+- **“更新本周读论文进度” / Update weekly reading progress**: Inspect `paperflow status` / `paperflow research` and existing reading status; update weekly progress notes or links without regenerating validated paper analyses.
+
+Treat Codex-managed `research/` files (`RESEARCH_HOME.md`, `EIGHT_WEEK_ROADMAP.md`, `HYPOTHESIS_REGISTRY.md`, `EXPERIMENT_LEDGER.md`) and `experiments/` as read-only inputs unless the user explicitly asks to update weekly status. Respect `01-Literature/manual-*.md` notes and surface Zotero/corpus matches rather than overwriting manual notes.
+
 ## Review recently synced papers
 
 When asked to process or review recent papers:

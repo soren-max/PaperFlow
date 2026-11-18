@@ -1,0 +1,11 @@
+# Portable PaperFlow configuration example for an 8-week research workspace
+# Copy to <research-vault>/.paperflow/config.toml only when ready to sync.
+# Relative paths resolve against `vault`; never hardcode machine-specific paths into library code.
+
+vault = "."
+literature_dir = "01-Literature"
+collection_keys = ["JSQ9B7XW"]
+research_dir = "research"
+experiments_dir = "experiments"
+zotero_backend = "auto"
+zotero_local_api_url = "http://127.0.0.1:23119"

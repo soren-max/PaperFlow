@@ -47,6 +47,21 @@ def validate_positioning(config: Config, plan: dict, state: dict, cards: list[di
             raise ValueError(f"Positioning card has invalid {key}")
     if metadata.get("target_contributions") != plan.get("target_contributions", []):
         raise ValueError("Positioning card target_contributions differ from the reading plan")
+    for list_field in (
+        "rq_ids",
+        "hypothesis_ids",
+        "experiment_ids",
+        "baseline_for",
+        "challenged_by_experiments",
+    ):
+        if list_field in metadata:
+            value = metadata[list_field]
+            if not isinstance(value, list) or not all(
+                isinstance(item, str) and item.strip() for item in value
+            ):
+                raise ValueError(
+                    f"Positioning card {list_field} must be an array of nonempty strings"
+                )
     body = re.sub(r"<!--.*?-->", "", content[match.end():], flags=re.DOTALL)
     if f"[[{state['citekey']}]]" not in body:
         raise ValueError("Positioning card needs an exact Literature citekey link")

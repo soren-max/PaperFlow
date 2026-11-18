@@ -10,7 +10,7 @@ from pathlib import Path
 
 import yaml
 
-from .config import Config, load_manifest
+from .config import Config, load_manifest, normalize_local_path
 from .ingest import _hash_file, _write_json, resolve_paper
 from .process import inspect
 
@@ -175,7 +175,7 @@ def reconcile(config: Config, paper: str) -> tuple[Path, dict]:
                 )
             ):
                 issues.append("Pipeline identity differs from legacy capture")
-            pdf = Path(source_state["pdf_locator"])
+            pdf = normalize_local_path(source_state["pdf_locator"])
             if not pdf.is_file() or _hash_file(pdf) != source_state.get("pdf_sha256"):
                 issues.append("Zotero PDF locator is missing or its contents changed")
             _, state, pipeline_issues = inspect(config, key)

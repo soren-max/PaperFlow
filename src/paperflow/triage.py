@@ -19,6 +19,7 @@ import yaml
 from .config import Config, load_manifest
 from .ingest import _write_json, resolve_paper
 from .markdown import ANNOTATIONS_BEGIN, ANNOTATIONS_END, METADATA_BEGIN, METADATA_END
+from .research import render_research_digest
 
 PACKET_NAME = "packet.md"
 CARD_NAME = "paper-card.md"
@@ -240,6 +241,9 @@ def context_digest(config: Config, citekey: str = "", paper_text: str = "") -> s
         lines.append("")
 
     lines.extend(["### Active Novelty Ledgers (researcher inference)", _shortened("\n".join(_ledger_digest(config, citekey, terms)), 3_000), ""])
+
+    if program_digest := render_research_digest(config, citekey=citekey):
+        lines.extend([program_digest, ""])
 
     records = load_manifest(config).get("items", {})
     ordered = sorted(records.items(), key=lambda item: item[1].get("citekey") or "")

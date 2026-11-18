@@ -10,8 +10,8 @@ Inputs: final Literature reading note, validated evidence, the Positioning Card 
 For an active project, prioritize:
 
 1. Check whether the paper strengthens, weakens, narrows, or leaves unchanged each affected contribution claim. Compare the exact claim wording, not just a topic label.
-2. Update the existing project Novelty Ledger in `03-Synthesis/` using `90-Templates/NoveltyLedger.md`. Create one only when no matching ledger exists. Link the Positioning Card and exact Literature citekeys. Record already solved / partially / not observed / unknown, the scoped remaining gap, confidence, evidence/reading scope, and proposed next action. Preserve the current claim alongside proposed revisions.
-3. Update decision Questions in `04-Questions/`: resolve only when evidence meets the stated resolution criterion; record new uncertainties and the reading or experiment that would settle them.
+2. Update the existing project Novelty Ledger in `03-Synthesis/` using `90-Templates/NoveltyLedger.md`. Create one only when no matching ledger exists. Link the Positioning Card and exact Literature citekeys, plus any matching `rq_ids`, `hypothesis_ids`, and `experiment_ids`. Record already solved / partially / not observed / unknown, the scoped remaining gap, confidence, evidence/reading scope, and proposed next action. Preserve the current claim alongside proposed revisions.
+3. Update decision Questions in `04-Questions/`: resolve only when evidence meets the stated resolution criterion; record new uncertainties, matching `rq_ids` / `hypothesis_ids` / `experiment_ids`, and the reading or experiment that would settle them. Do not rewrite external `research/` roadmaps or experiment ledgers automatically.
 4. Update stable Concepts only where the evidence warrants it, then Research Area navigation and other relevant Synthesis.
 
 Without an active claim or research decision, retain the usual Concept/Question integration; do not create a speculative ledger. A single-paper positioning note is allowed in Synthesis but must identify its limited basis. Cross-paper conclusions require the papers actually used.

@@ -120,7 +120,13 @@ codex
 
 Then ask naturally: “整理这篇”, “比较这两篇方法”, “找出这个方向的 gap”, or “基于已有文献设计实验”。Codex handles source location, bounded reading, evidence validation, and knowledge-base updates as internal work.
 
-`triage` remains available when you want to screen a batch of synced literature. `status` and `doctor` are diagnostic tools. Internal processing levels and stages are not daily commands or user choices.
+`triage` remains available when you want to screen a batch of synced literature. `status` and `doctor` are diagnostic tools. When a research program (`research/` + `experiments/`) is linked via `.paperflow/config.toml`, optional read-only `paperflow research` and `paperflow find <query>` traverse `Paper ↔ RQ ↔ Hypothesis ↔ Experiment` without modifying roadmap or experiment files. Internal processing levels and stages are not daily commands or user choices.
+
+Additional documentation:
+- [Academic Workflow Audit](docs/ACADEMIC_WORKFLOW_AUDIT.md)
+- [Academic Skills Integration](docs/ACADEMIC_SKILLS_INTEGRATION.md)
+- [Long-Research Integration & Demo](docs/LONG_RESEARCH_INTEGRATION.md)
+- [Upgrade Changelog](docs/UPGRADE_CHANGELOG.md)
 
 ## Using PaperFlow with Codex
 
