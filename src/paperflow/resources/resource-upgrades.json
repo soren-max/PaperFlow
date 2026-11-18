@@ -1,18 +1,24 @@
 {
   "AGENTS.md": [
-    "83820c3fb63856c6910ae6225b3dc1eded9afa4bd18779d5b25731462936886c"
+    "83820c3fb63856c6910ae6225b3dc1eded9afa4bd18779d5b25731462936886c",
+    "6bfe8ebbdbd51aba7259bb2b1c95a0ab1e8a8c16952a3c49a73b6775da58888e"
   ],
   ".agents/skills/paperflow/SKILL.md": [
-    "ff314b2756ab297167312bc4aae93a2d874106fbe2ad8c810bbbe934cbcec1c7"
+    "ff314b2756ab297167312bc4aae93a2d874106fbe2ad8c810bbbe934cbcec1c7",
+    "53aa8133470eb1001fe65cf90fd6164d3f864968bbd2d07f8e4b825ab279e649"
   ],
   ".agents/skills/paperflow/prompts/knowledge-integration.md": [
-    "ae1b9e1bd7d965d11dc6077df04d32357aaf7013c71b06ae24c83b8ab944bef5"
+    "ae1b9e1bd7d965d11dc6077df04d32357aaf7013c71b06ae24c83b8ab944bef5",
+    "a2111d5bbf6c3045c5c19f056f24d70dae93972d5e6016e25f77b3ffce1315f"
   ],
   ".agents/skills/paperflow/prompts/paper-map.md": [
     "72fc6af47870a0b24f6e920876cb3a68bdae006668410d1d7dc549965ca02713"
   ],
   ".agents/skills/paperflow/prompts/paper-synthesis.md": [
     "4eaac4398618badfacbc70df9f04c5d45dbd5204cf067ee4c359013880bb93e1"
+  ],
+  ".agents/skills/paperflow/prompts/positioning.md": [
+    "63d489531dc5f0cfa53634b7c328fcef4d7f4ae16678a31fe652aa350b38f442"
   ],
   ".agents/skills/paperflow/prompts/triage.md": [
     "f3b11bc3e7e6cadf15611c0ce15aa04977dfcb1b143bccc72ebcc425dd05f388"
@@ -21,6 +27,13 @@
     "555e997433c81b643a88f8454801842776783242934524da63c21a4afd088e5a"
   ],
   "90-Templates/Question.md": [
-    "ccc06e055fcb671d78f09a7d1497a8d5ffa55b390953ec77a1e16e8f95cfe6a8"
+    "ccc06e055fcb671d78f09a7d1497a8d5ffa55b390953ec77a1e16e8f95cfe6a8",
+    "2d1cbdf22e4f3e1e263eeb62776f429c23519fb8fe719faf6a82631ac5099fcf"
+  ],
+  "90-Templates/Positioning.md": [
+    "5730e2e02bd10715b4a0f8258c15af20594098707bcae8a735e0cffded4f366e"
+  ],
+  "90-Templates/NoveltyLedger.md": [
+    "1e662b53121f396f5696b1a26162b7e9cfd07456e4b132bc045df0f7e3179a54"
   ]
 }

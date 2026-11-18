@@ -6,11 +6,11 @@ import hashlib
 import json
 import re
 import tempfile
-from importlib.metadata import version
+from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 
-from .config import Config, load_manifest
-from .zotero import fetch_paper_pdf
+from .config import Config, load_manifest, normalize_local_path
+from .zotero import fetch_paper_pdf, zotero_context
 
 HEADING = re.compile(r"^(#{1,6})\s+(.+?)\s*$")
 PAGE = re.compile(r"^<!-- page: (\d+) -->$")
@@ -144,14 +144,19 @@ def _build_structure(source: str, output: Path) -> dict:
 
 def ingest(config: Config, paper: str, converter: str = "pymupdf4llm") -> tuple[Path, bool]:
     key, record = resolve_paper(config, paper)
-    zotero = fetch_paper_pdf(key)
-    pdfs = [entry for entry in zotero.get("pdfs", []) if Path(entry["path"]).is_file()]
+    with zotero_context(config):
+        zotero = fetch_paper_pdf(key)
+    pdfs = [
+        {**entry, "local_path": normalize_local_path(entry["path"])}
+        for entry in zotero.get("pdfs", [])
+        if entry.get("path") and normalize_local_path(entry["path"]).is_file()
+    ]
     if not pdfs:
         raise ValueError(f"Zotero item {key} has no locally available PDF attachment")
     if len(pdfs) > 1:
         raise ValueError(f"Zotero item {key} has multiple PDFs; choose one in Zotero first")
     attachment = pdfs[0]
-    pdf = Path(attachment["path"])
+    pdf = attachment["local_path"]
     pdf_hash = _hash_file(pdf)
     target = config.state_dir / "papers" / key
     state_path = target / "state.json"
@@ -184,6 +189,10 @@ def ingest(config: Config, paper: str, converter: str = "pymupdf4llm") -> tuple[
         ).strip()
         + "\n"
     )
+    try:
+        converter_version = version(converter)
+    except PackageNotFoundError:
+        converter_version = "unknown"
     target.parent.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix=f".{key}-", dir=target.parent) as temporary:
         output = Path(temporary)
@@ -203,7 +212,7 @@ def ingest(config: Config, paper: str, converter: str = "pymupdf4llm") -> tuple[
                 "pdf_locator": str(pdf),
                 "pdf_sha256": pdf_hash,
                 "source_sha256": hashlib.sha256(source.encode("utf-8")).hexdigest(),
-                "converter": {"name": converter, "version": version(converter)},
+                "converter": {"name": converter, "version": converter_version},
                 "stages": {
                     "ingested": "done",
                     "mapped": "pending",

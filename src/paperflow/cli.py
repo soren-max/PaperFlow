@@ -22,6 +22,7 @@ from .ingest import ingest as ingest_paper
 from .migration import reconcile as reconcile_legacy
 from .process import inspect as inspect_paper
 from .process import publish_note as publish_paper_note
+from .research import load_research_program, query_research
 from .sync import changes, synchronize
 from .triage import summary as triage_summary
 from .triage import triage as triage_papers
@@ -32,6 +33,7 @@ from .zotero import (
     fetch_snapshot,
     list_collections,
     ping,
+    zotero_context,
 )
 
 if os.name == "nt":
@@ -65,6 +67,7 @@ VAULT_RESOURCES = {
     "90-Templates/Question.md": "templates/Question.md",
     "90-Templates/Positioning.md": "templates/Positioning.md",
     "90-Templates/NoveltyLedger.md": "templates/NoveltyLedger.md",
+    "90-Templates/MentorReading.md": "templates/MentorReading.md",
     ".agents/skills/paperflow/prompts/positioning.md": "skills/paperflow/prompts/positioning.md",
 }
 VAULT_FOLDERS = (
@@ -259,28 +262,37 @@ def initialize(
         vault=vault,
         literature_dir=existing.literature_dir,
         collection_keys=existing.collection_keys,
+        research_dir=existing.research_dir,
+        experiments_dir=existing.experiments_dir,
+        zotero_backend=existing.zotero_backend,
+        zotero_local_api_url=existing.zotero_local_api_url,
     )
     for folder in VAULT_FOLDERS:
         (vault / folder).mkdir(exist_ok=True)
     _install_vault_resources(vault)
-    ok, _ = ping(timeout=5)
-    if ok:
-        try:
-            collections = list_collections()
-            config = Config(
-                vault=vault,
-                literature_dir=config.literature_dir,
-                collection_keys=_choose_scope(collections, config.collection_keys),
-            )
-            with console.status("Counting selected papers…"):
-                selected_count = len(fetch_library(config.collection_keys))
-        except ZoteroUnavailable as error:
+    with zotero_context(config):
+        ok, _ = ping(timeout=5)
+        if ok:
+            try:
+                collections = list_collections()
+                config = Config(
+                    vault=vault,
+                    literature_dir=config.literature_dir,
+                    collection_keys=_choose_scope(collections, config.collection_keys),
+                    research_dir=config.research_dir,
+                    experiments_dir=config.experiments_dir,
+                    zotero_backend=config.zotero_backend,
+                    zotero_local_api_url=config.zotero_local_api_url,
+                )
+                with console.status("Counting selected papers…"):
+                    selected_count = len(fetch_library(config.collection_keys))
+            except ZoteroUnavailable as error:
+                collections = []
+                selected_count = None
+                console.print(f"[yellow]![/yellow] Could not read Zotero collections: {error}")
+        else:
             collections = []
             selected_count = None
-            console.print(f"[yellow]![/yellow] Could not read Zotero collections: {error}")
-    else:
-        collections = []
-        selected_count = None
 
     write_config(config)
     if not config.manifest_path.exists():
@@ -313,7 +325,8 @@ def sync(
     config = _get_config(vault)
     console.print("[bold]Reading Zotero…[/bold]")
     try:
-        items = fetch_library(config.collection_keys)
+        with zotero_context(config):
+            items = fetch_library(config.collection_keys)
     except ZoteroUnavailable as error:
         console.print("\n[red]✗ Cannot reach Zotero.[/red]")
         console.print(str(error))
@@ -511,7 +524,8 @@ def status(
     zotero_total: int | None = None
     synced = len(records)
     try:
-        items, collections = fetch_snapshot(config.collection_keys, timeout=30)
+        with zotero_context(config):
+            items, collections = fetch_snapshot(config.collection_keys, timeout=30)
         zotero_total = len(items)
         synced = sum(item["zotero_key"] in records for item in items)
         pending, annotations, missing = changes(items, manifest, config)
@@ -551,6 +565,20 @@ def status(
         f"{counts['processed']:,} processed · {counts['triaged']:,} triaged · "
         f"{counts['unprocessed']:,} unprocessed",
     )
+    program = load_research_program(config)
+    if program.research_dir or program.experiments_dir:
+        parts = []
+        if program.current_week is not None:
+            parts.append(f"Week {program.current_week}")
+        if program.rqs:
+            parts.append(f"{len(program.rqs)} RQs")
+        if program.hypotheses:
+            parts.append(f"{len(program.hypotheses)} hypotheses")
+        exp_count = len({*([e["id"] for e in program.ledger_experiments]), *([r["id"] for r in program.experiment_reports])})
+        parts.append(f"{exp_count} experiments")
+        if program.manual_notes:
+            parts.append(f"{len(program.manual_notes)} manual note(s)")
+        table.add_row("Research", " · ".join(parts))
     table.add_row("Last sync", _relative_time(manifest.get("last_sync_at")))
     console.print(Panel(table, title="[bold]PaperFlow[/bold]", expand=False))
     if pending:
@@ -580,28 +608,47 @@ def doctor(
         console.print(f"[red]✗[/red] Vault not found — {config.vault}")
         console.print("  Run [bold]paperflow init <vault>[/bold] to select it again.")
 
-    ok, detail = ping()
-    if ok:
-        console.print("[green]✓[/green] Zotero reachable")
-    else:
-        problems += 1
-        console.print("[red]✗[/red] Cannot reach Zotero")
-        console.print("  Open Zotero. If this is your first run, use: [bold]zot init[/bold]")
-        if detail:
-            console.print(f"  [dim]{detail.splitlines()[-1]}[/dim]")
+    with zotero_context(config):
+        ok, detail = ping()
+        if ok:
+            via = "Local HTTP API" if detail == "local_api" else "bridge"
+            console.print(f"[green]✓[/green] Zotero reachable ({via})")
+        else:
+            problems += 1
+            console.print("[red]✗[/red] Cannot reach Zotero")
+            console.print(
+                "  Open Zotero (with Local API enabled or `zot init` for the bridge plugin)."
+            )
+            if detail:
+                console.print(f"  [dim]{detail.splitlines()[-1]}[/dim]")
 
-    if ok and config.collection_keys:
-        try:
-            available = {collection.key for collection in list_collections()}
-            missing_keys = [key for key in config.collection_keys if key not in available]
-            if missing_keys:
-                problems += 1
-                console.print("[red]✗[/red] A selected Zotero collection no longer exists")
-                console.print("  Run [bold]paperflow init[/bold] to choose the scope again.")
-            else:
-                console.print("[green]✓[/green] Collection scope valid")
-        except ZoteroUnavailable:
-            pass
+        if ok and config.collection_keys:
+            try:
+                available = {collection.key for collection in list_collections()}
+                missing_keys = [key for key in config.collection_keys if key not in available]
+                if missing_keys:
+                    problems += 1
+                    console.print("[red]✗[/red] A selected Zotero collection no longer exists")
+                    console.print("  Run [bold]paperflow init[/bold] to choose the scope again.")
+                else:
+                    console.print("[green]✓[/green] Collection scope valid")
+            except ZoteroUnavailable:
+                pass
+
+    if config.research_dir:
+        rpath = config.research_path
+        if rpath and rpath.is_dir():
+            console.print(f"[green]✓[/green] Research dir found — {rpath}")
+        else:
+            problems += 1
+            console.print(f"[red]✗[/red] Research dir not found — {config.research_dir}")
+    if config.experiments_dir:
+        epath = config.experiments_path
+        if epath and epath.is_dir():
+            console.print(f"[green]✓[/green] Experiments dir found — {epath}")
+        else:
+            problems += 1
+            console.print(f"[red]✗[/red] Experiments dir not found — {config.experiments_dir}")
 
     for command, label in (("codex", "Codex"), ("git", "Git")):
         if command_available(command):
@@ -612,3 +659,146 @@ def doctor(
 
     if problems:
         raise typer.Exit(1)
+
+
+@app.command()
+def research(
+    vault: Annotated[Path | None, typer.Option("--vault", help="Vault or config path")] = None,
+    as_json: Annotated[bool, typer.Option("--json", help="Print JSON summary")] = False,
+) -> None:
+    """Show linked roadmap, hypotheses, manual notes, and experiments (read-only)."""
+    config = _get_config(vault)
+    program = load_research_program(config)
+    payload = {
+        "research_dir": str(program.research_dir) if program.research_dir else None,
+        "experiments_dir": str(program.experiments_dir) if program.experiments_dir else None,
+        "current_week": program.current_week,
+        "state_summary": program.state_summary,
+        "rqs": program.rqs,
+        "hypotheses": program.hypotheses,
+        "ideas": program.ideas,
+        "ledger_experiments": program.ledger_experiments,
+        "experiment_reports": [
+            {k: v for k, v in rep.items() if k != "body"} for rep in program.experiment_reports
+        ],
+        "corpus_count": len(program.corpus),
+        "weekly_plans": program.weekly_plans,
+        "manual_notes": program.manual_notes,
+    }
+    if as_json:
+        console.print_json(data=payload)
+        return
+    if not program.research_dir and not program.experiments_dir and not program.manual_notes:
+        console.print(
+            "No linked research program found. Set `research_dir` / `experiments_dir` in `.paperflow/config.toml`."
+        )
+        return
+    table = Table.grid(padding=(0, 3))
+    table.add_column(style="bold cyan", width=16)
+    table.add_column()
+    table.add_row("Research dir", str(program.research_dir or "—"))
+    table.add_row("Experiments dir", str(program.experiments_dir or "—"))
+    table.add_row(
+        "Current week", f"Week {program.current_week}" if program.current_week is not None else "—"
+    )
+    table.add_row("RQs / Corpus", f"{len(program.rqs)} RQs · {len(program.corpus)} corpus items")
+    table.add_row("Hypotheses", f"{len(program.hypotheses)} registered")
+    table.add_row(
+        "Experiments",
+        f"{len(program.ledger_experiments)} ledger row(s) · {len(program.experiment_reports)} report(s)",
+    )
+    if program.manual_notes:
+        notes_text = ", ".join(
+            f"{hint['path']}"
+            + (f" -> [[{hint['synced_citekey']}]]" if hint["synced_citekey"] else "")
+            for hint in program.manual_notes
+        )
+        table.add_row("Manual notes", notes_text)
+    console.print(Panel(table, title="[bold]Research Program[/bold]", expand=False))
+
+
+@app.command()
+def find(
+    query: Annotated[str, typer.Argument(help="Citekey, RQ-xx, Hxx, EXP-xxx, or keyword")],
+    vault: Annotated[Path | None, typer.Option("--vault", help="Vault or config path")] = None,
+    kind: Annotated[
+        str,
+        typer.Option(
+            "--type",
+            help="Filter: all, paper, rq, hypothesis, experiment, evidence, competitor",
+        ),
+    ] = "all",
+    as_json: Annotated[bool, typer.Option("--json", help="Print JSON matches")] = False,
+) -> None:
+    """Search across Literature, evidence cards, Positioning, hypotheses, and experiments."""
+    allowed_kinds = ("all", "paper", "rq", "hypothesis", "experiment", "evidence", "competitor")
+    if kind not in allowed_kinds:
+        raise typer.BadParameter(f"--type must be one of {', '.join(allowed_kinds)}")
+    config = _get_config(vault)
+    result = query_research(config, query, kind=kind)
+    if as_json:
+        console.print_json(data=result)
+        return
+    total = sum(
+        len(result[bucket])
+        for bucket in (
+            "papers",
+            "evidence",
+            "positioning",
+            "novelty_ledgers",
+            "questions",
+            "rqs",
+            "hypotheses",
+            "experiments",
+        )
+    )
+    if total == 0:
+        console.print(f"No matches for '{query}'.")
+        return
+    for label, key in (
+        ("RQs", "rqs"),
+        ("Hypotheses", "hypotheses"),
+        ("Papers", "papers"),
+        ("Evidence", "evidence"),
+        ("Positioning", "positioning"),
+        ("Novelty Ledgers", "novelty_ledgers"),
+        ("Questions", "questions"),
+        ("Experiments", "experiments"),
+    ):
+        items = result[key]
+        if not items:
+            continue
+        console.print(f"[bold]{label}[/bold] ({len(items)})")
+        for item in items[:15]:
+            if key == "papers":
+                extra = []
+                if item["rq_ids"]:
+                    extra.append("RQs: " + ",".join(item["rq_ids"]))
+                if item["hypothesis_ids"]:
+                    extra.append("H: " + ",".join(item["hypothesis_ids"]))
+                if item["experiment_ids"]:
+                    extra.append("Exp: " + ",".join(item["experiment_ids"]))
+                if item["evidence_count"]:
+                    extra.append(f"{item['evidence_count']} evidence")
+                console.print(
+                    f"  • [[{item['citekey']}]] {item['title']}"
+                    + (f" ({' · '.join(extra)})" if extra else "")
+                )
+            elif key == "evidence":
+                console.print(
+                    f"  • [[{item['citekey']}]] [{item['id']}] p.{item['page']}: {item['claim']}"
+                )
+            elif key == "rqs":
+                console.print(f"  • {item['question']}")
+            elif key == "hypotheses":
+                console.print(f"  • {item['id']}: {item['statement']}")
+            elif key == "experiments":
+                console.print(
+                    f"  • {item['id']} ({item.get('status') or 'recorded'}) — {item['path']}"
+                )
+            elif key == "positioning":
+                console.print(
+                    f"  • {item['path']} ({item['research_role']} · threat {item['novelty_threat']})"
+                )
+            else:
+                console.print(f"  • {item.get('path') or item.get('title')}")

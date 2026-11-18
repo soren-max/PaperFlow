@@ -7,6 +7,11 @@ research_role: direct_competitor
 novelty_threat: unknown
 reading_goal: positioning
 target_contributions: []
+rq_ids: []
+hypothesis_ids: []
+experiment_ids: []
+baseline_for: []
+challenged_by_experiments: []
 source_sha256: ""
 evidence_sha256: ""
 ---

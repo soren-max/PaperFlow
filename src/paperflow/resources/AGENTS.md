@@ -11,5 +11,7 @@
 - For an active project, read saved contribution claims and research-decision Questions before routing papers. Keep Positioning Cards and a project Novelty Ledger in `03-Synthesis/`; update positioning and decisions before stable Concepts.
 - Treat novelty threat as provisional. Distinguish explicit paper limitations from features not observed in reviewed sections; retain checked corpus, date, and evidence coverage for negative conclusions.
 - Prefer updating an existing Concept or Synthesis over creating a duplicate.
+- When an external research program (`research/` roadmap, `HYPOTHESIS_REGISTRY.md`, `EXPERIMENT_LEDGER.md`) or `experiments/` directory is linked, treat it as read-only reference context unless explicitly asked to update progress; use `RQ-xx`, `Hxx`, `EXP-xxx`, and `[[citekey]]` links to trace `Paper → RQ → Hypothesis → Experiment`.
+- Coordinate with `academic-research-suite` without duplicating it: PaperFlow owns Zotero sync, local PDF evidence extraction, citation provenance, Positioning Cards, and Novelty Ledgers; `academic-research-suite` owns external discovery, research-question framing, experimental design, and paper writing/reviewing.
 - Do not modify PaperFlow-managed blocks or `## My Notes` unless explicitly requested.
 - Keep Markdown human-readable and mark inference, uncertainty, and missing evidence clearly.
