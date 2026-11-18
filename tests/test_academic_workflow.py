@@ -659,3 +659,35 @@ def test_sync_and_research_queries_are_idempotent(tmp_path):
     assert first.created == 1
     assert second.unchanged == 1
     assert query_research(cfg, "H01") == query_research(cfg, "H01")
+
+
+def test_pymupdf_pages_retries_without_ocr_on_tesseract_error(tmp_path, monkeypatch):
+    import sys
+    import types
+
+    from paperflow.ingest import _pymupdf_pages
+
+    calls: list[dict[str, object]] = []
+
+    def fake_to_markdown(path: str, **kwargs: object) -> list[dict[str, str]]:
+        calls.append({"path": path, **kwargs})
+        if kwargs.get("use_ocr") is not False:
+            raise RuntimeError("FzErrorLibrary: code=3: Tesseract language initialisation failed")
+        return [{"text": " # Page 1 \n"}]
+
+    monkeypatch.setitem(sys.modules, "pymupdf4llm", types.SimpleNamespace(to_markdown=fake_to_markdown))
+    pdf = tmp_path / "sample.pdf"
+    pdf.write_bytes(b"%PDF-1.4")
+    assert _pymupdf_pages(pdf) == ["# Page 1"]
+    assert calls == [
+        {"path": str(pdf), "page_chunks": True},
+        {"path": str(pdf), "page_chunks": True, "use_ocr": False},
+    ]
+
+    def failing_to_markdown(path: str, **kwargs: object) -> list[dict[str, str]]:
+        raise ValueError("corrupted pdf header")
+
+    monkeypatch.setitem(sys.modules, "pymupdf4llm", types.SimpleNamespace(to_markdown=failing_to_markdown))
+    with pytest.raises(ValueError, match="corrupted pdf header"):
+        _pymupdf_pages(pdf)
+

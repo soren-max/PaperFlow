@@ -57,7 +57,13 @@ def _pymupdf_pages(pdf: Path) -> list[str]:
         raise RuntimeError(
             "PyMuPDF4LLM is required. Install it with: pip install 'paperflow[pdf]'"
         ) from error
-    return [entry["text"].strip() for entry in pymupdf4llm.to_markdown(str(pdf), page_chunks=True)]
+    try:
+        chunks = pymupdf4llm.to_markdown(str(pdf), page_chunks=True)
+    except Exception as error:
+        if not any(token in str(error).lower() for token in ("tesseract", "tessdata", "pdfocr")):
+            raise
+        chunks = pymupdf4llm.to_markdown(str(pdf), page_chunks=True, use_ocr=False)
+    return [entry["text"].strip() for entry in chunks]
 
 
 def _slug(value: str) -> str:
